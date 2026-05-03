@@ -1,62 +1,13 @@
-from SignalHub import GALY, get_nested_key, Module
+from SignalHub import Module
 from collections import deque
+import numpy as np
 
 class Preprocessor(Module):
     """
     Modul zur Vorverarbeitung von Fingertrajektorien.
-
-    Dieses Modul verarbeitet die vom Handdetektor gelieferten Landmarken
-    und extrahiert daraus die Bewegung eines bestimmten Fingers über
-    mehrere Frames hinweg.
-
-    Ziel ist es, eine Trajektorie zu sammeln, diese zu normalisieren
-    und anschließend als Eingabe für nachfolgende Module bereitzustellen.
     """
 
     def __init__(self, outputSignal="preprocessor"):
-        """
-        Konstruktor des Moduls.
-
-        Ziel ist es, das Modul beim Framework korrekt zu registrieren.
-
-        Hinweise
-        --------
-        - Ein Modul muss definieren, **welche Signale es empfangen möchte**.
-        - Diese werden über ``inputSignals`` angegeben.
-        - Nur Signale, die hier subscribed werden, erscheinen später im
-          ``data`` Dictionary der Methoden :meth:`start` und :meth:`step`.
-
-        Für dieses Modul werden unter anderem folgende Signale benötigt:
-
-        - ``config`` : Systemkonfiguration
-        - ``detector`` : Ergebnisse der Handdetektion
-
-        Zusätzlich muss ein **Output-Schema** definiert werden.
-
-        Output Schema
-        -------------
-        Das Modul erzeugt ein Signal mit dem Namen ``preprocessor``.
-
-        Dieses Signal enthält entweder eine normalisierte Trajektorie
-        oder ``None``, falls noch nicht genügend Daten gesammelt wurden.
-
-        Beispiel:
-
-        ``outputSchema={"type": "object", "properties": {outputSignal: {}}}``
-
-        .. note::
-           Die Basisklasse :class:`Module` erwartet beim Aufruf von
-           ``super().__init__`` unter anderem:
-
-           - ``inputSignals``
-           - ``outputSchema``
-           - ``name`` des Moduls
-
-        Parameters
-        ----------
-        outputSignal : str, optional
-            Name des erzeugten Output-Signals.
-        """
         super().__init__(
             inputSignals=["config", "detector"],
             outputSchema={"type": "object", "properties": {outputSignal: {}}},
@@ -64,126 +15,65 @@ class Preprocessor(Module):
         )
 
     def start(self, data):
-        """
-        Initialisierung des Modulzustands.
+        # Konfiguration sicher laden (wie beim TrailMarker)
+        config = data.get("config", {}).get("preprocessor", {})
+        
+        self.finger_idx = config.get("finger_idx", 8)
+        self.buffer_size = config.get("buffer_size", 140)
+        self.max_lost = config.get("max_lost", 10)
+        self.min_steps = config.get("min_steps", 15)
 
-        Diese Methode wird einmal beim Start des Moduls ausgeführt.
-
-        Ziel ist es, alle benötigten Parameter aus der Konfiguration zu
-        lesen und interne Datenstrukturen vorzubereiten.
-
-        Hinweise
-        --------
-        - Lese relevante Parameter aus der Konfiguration, z.B.
-          den zu verfolgenden Finger.
-        - Lege eine Datenstruktur an, um mehrere vergangene
-          Fingerpositionen zu speichern, z.B. :class:`collections.deque`
-          mit einer maximalen Größe.
-        - Speichere außerdem Parameter wie die maximale Anzahl
-          verlorener Frames oder die minimale Anzahl benötigter Punkte.
-        - Zum Zugriff auf verschachtelte Konfigurationswerte kann
-          :meth:`get_nested_key` verwendet werden.
-
-        .. tip::
-            Eine ``deque`` mit fester Länge ist ideal für Trajektorien,
-            da alte Punkte automatisch verworfen werden.
-
-        .. note::
-            Trenne klar zwischen:
-              - Initialisierung von Parametern (``start``)
-              - Verarbeitung von Daten (``step``)
-
-        Parameters
-        ----------
-        data : dict
-            Eingabedaten des Frameworks. Enthält unter anderem das
-            Signal ``config``.
-
-        Returns
-        -------
-        dict
-            Ein leeres Dictionary.
-        """
+        # Interner Speicher für Trajektorie
+        self.history = deque(maxlen=self.buffer_size)
+        self.lost_frames = 0
+        
+        self.outputSignal = "preprocessor"
         return {}
 
     def step(self, data):
-        """
-        Verarbeitung eines einzelnen Frames.
+        hand_landmarks = data.get("detector")
+        result_trajectory = None
 
-        Ziel ist es, eine Fingerposition aus den erkannten Landmarken
-        zu extrahieren und diese in einer Trajektorie zu speichern.
+        if hand_landmarks:
+            # Hand im Bild: Zähler zurücksetzen
+            self.lost_frames = 0
+            
+            # Relative MediaPipe-Werte (0.0 bis 1.0)
+            x = hand_landmarks.landmark[self.finger_idx].x
+            y = hand_landmarks.landmark[self.finger_idx].y
+            self.history.append([x, y])
+        else:
+            # Keine Hand im Bild: Zähler hochzählen
+            self.lost_frames += 1
 
-        Hinweise
-        --------
-        - Greife auf das ``detector`` Signal zu, um erkannte
-          Handlandmarks zu erhalten.
-        - Falls keine Hand erkannt wurde, sollte ein interner
-          Zähler für verlorene Frames erhöht werden.
-        - Wird eine Hand erkannt, kann die Landmarke des gewünschten
-          Fingers extrahiert werden.
-        - Die Position dieses Fingers kann anschließend in einer
-          Trajektorie gespeichert werden.
-        - Sobald genügend Punkte gesammelt wurden, kann die
-          Trajektorie weiterverarbeitet werden.
+        # Geste ist beendet wenn die Hand lange genug aus dem Bild ist
+        if self.lost_frames > self.max_lost:
+            # Prüfen ob wir genug Punkte für eine Geste gesammelt haben
+            if len(self.history) >= self.min_steps:
+                
+                # 1. In np Array umwandeln [cite: 16]
+                traj = np.array(self.history)
+                
+                # 2. Zentrieren (Mittelwert abziehen, Geste rutscht auf Ursprung 0,0)
+                center = np.mean(traj, axis=0)
+                traj_centered = traj - center
+                
+                # 3. Skalieren (durch maximale Ausdehnung teilen, Geste passt exakt in eine Box von -1 bis 1)
+                max_dist = np.max(np.abs(traj_centered))
+                if max_dist > 0:
+                    traj_normalized = traj_centered / max_dist
+                else:
+                    traj_normalized = traj_centered
+                    
+                result_trajectory = traj_normalized
+                
+                print(f"✅ Geste erfasst! Länge: {len(traj_normalized)} Punkte")
+                
+            # Historie leeren
+            self.history.clear()
 
-        Mögliche Verarbeitungsschritte:
-
-        - Umwandlung der gespeicherten Punkte in ein
-          :class:`numpy.ndarray`
-        - Berechnung eines Zentrums der Trajektorie
-        - Skalierung oder Normalisierung der Punkte
-
-        .. tip::
-            Arbeite schrittweise:
-              1. Prüfen, ob Landmarken vorhanden sind
-              2. Fingerposition extrahieren
-              3. In Trajektorie speichern
-              4. Optional normalisieren
-
-        .. warning::
-            Achte darauf, dass:
-              - genügend Punkte vorhanden sind
-              - keine fehlerhaften Frames verarbeitet werden
-              - verlorene Frames sinnvoll behandelt werden
-
-        Parameters
-        ----------
-        data : dict
-            Enthält unter anderem:
-
-            - ``detector`` : erkannte Hände und Landmarken
-            - ``config`` : Systemkonfiguration
-
-        Returns
-        -------
-        dict
-            Gibt entweder ``None`` oder eine normalisierte Trajektorie
-            zurück.
-
-            Beispiel:
-
-            ``return {outputSignal: trajectory}``
-        """
-        return {}
+        # Rückgabe an Framework
+        return {self.outputSignal: result_trajectory}
 
     def stop(self, data):
-        """
-        Wird aufgerufen, wenn das Modul beendet wird.
-
-        Ziel ist es, bei Bedarf interne Zustände zurückzusetzen
-        oder Ressourcen freizugeben.
-
-        Hinweise
-        --------
-        - In vielen Fällen ist keine spezielle Bereinigung notwendig.
-
-        .. note::
-           Diese Methode ist optional, kann aber relevant werden,
-           wenn interne Zustände explizit zurückgesetzt werden sollen.
-
-        Parameters
-        ----------
-        data : dict
-            Letzte übergebene Daten des Frameworks.
-        """
         pass
