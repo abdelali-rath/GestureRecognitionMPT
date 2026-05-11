@@ -1,6 +1,8 @@
 from SignalHub import Module
 from collections import deque
 import numpy as np
+import os
+import time
 
 class Preprocessor(Module):
     """
@@ -15,9 +17,18 @@ class Preprocessor(Module):
         )
 
     def start(self, data):
+        self.outputSignal = "preprocessor"
+        
         # Konfiguration sicher laden (wie beim TrailMarker)
         config = data.get("config", {}).get("preprocessor", {})
         
+        self.label = config.get("label", "unknown")
+        self.dataset_path = config.get("dataset_path", "dataset")
+
+# Klassenordner erstellen
+        self.class_path = os.path.join(self.dataset_path, self.label)
+        os.makedirs(self.class_path, exist_ok=True)
+
         self.finger_idx = config.get("finger_idx", 8)
         self.buffer_size = config.get("buffer_size", 140)
         self.max_lost = config.get("max_lost", 10)
@@ -66,14 +77,25 @@ class Preprocessor(Module):
                     traj_normalized = traj_centered
                     
                 result_trajectory = traj_normalized
+                                # Dateiname erzeugen
+                timestamp = int(time.time() * 1000)
                 
-                print(f"✅ Geste erfasst! Länge: {len(traj_normalized)} Punkte")
+                filename = os.path.join(
+                    self.class_path,
+                    f"{self.label}_{timestamp}.npy"
+                )               
+                
+                # Datei speichern
+                np.save(filename, traj_normalized)
+                
+                print(f" Gespeichert: {filename}")
+                
+                print(f" Geste erfasst! Länge: {len(traj_normalized)} Punkte")
                 
             # Historie leeren
             self.history.clear()
 
         # Rückgabe an Framework
         return {self.outputSignal: result_trajectory}
-
     def stop(self, data):
         pass

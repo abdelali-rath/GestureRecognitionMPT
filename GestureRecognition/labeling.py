@@ -1,3 +1,13 @@
+import os
+import shutil
+import numpy as np
+try:
+    import msvcrt  # Für Windows (dein MINGW64 Terminal)
+except ImportError:
+    pass
+import pickle
+from pathlib import Path
+
 def data_labeling(times: int, label: str):
     """
     TODO: data_labeling: Datenerfassung für Gesten (SignalHub)
@@ -74,6 +84,52 @@ def data_labeling(times: int, label: str):
     pass
 
 
+    temp_dir = "data/temp"
+    final_dir = f"data/{label}"
+    
+    # Ordner erstellen, falls nicht vorhanden
+    os.makedirs(final_dir, exist_ok=True)
+    
+    if not os.path.exists(temp_dir) or len(os.listdir(temp_dir)) == 0:
+        print(f"Keine temporären Aufnahmen in '{temp_dir}' gefunden.")
+        print("Bitte starte zuerst die SignalHub-Pipeline, um Aufnahmen zu machen!")
+        return
+
+    saved_count = 0
+    temp_files = [f for f in os.listdir(temp_dir) if f.endswith('.npy')]
+
+    print(f"\n=== Labeling für Geste: '{label}' gestartet ===")
+    print("Steuerung: [ENTER] = Speichern | [SPACE] = Verwerfen | [ESC] = Beenden\n")
+
+    for file in temp_files:
+        if saved_count >= times:
+            print(f"Ziel von {times} Aufnahmen erreicht!")
+            break
+
+        file_path = os.path.join(temp_dir, file)
+        data = np.load(file_path)
+        
+        # Zeige Infos zur aktuellen Geste an
+        print(f"Aufnahme {file}: {len(data)} Frames lang. Behalten?")
+        
+        # Interaktive Eingabe
+        while True:
+            key = ord(msvcrt.getch())
+            if key == 13:  # ENTER -> Behalten
+                new_filename = f"{label}_{len(os.listdir(final_dir))}.npy"
+                shutil.move(file_path, os.path.join(final_dir, new_filename))
+                saved_count += 1
+                print(f" -> Gespeichert als {new_filename} ({saved_count}/{times})")
+                break
+            elif key == 32:  # LEERTASTE -> Verwerfen
+                os.remove(file_path)
+                print(" -> Verworfen.")
+                break
+            elif key == 27:  # ESC -> Abbrechen
+                print("\nLabeling abgebrochen.")
+    return
+
+
 
 
 def dataset_building(output_path):
@@ -146,3 +202,54 @@ def dataset_building(output_path):
         Zielpfad für den erzeugten Trainingsdatensatz.
     """
     pass
+    base_dir = Path("data")
+    
+    X = []        # Hier kommen alle Koordinaten rein
+    lengths = []  # Hier kommt die Länge jeder Geste rein
+    labels = []   # Hier kommt der Name der Geste rein (z.B. "kreis")
+    
+    valid_classes = [d.name for d in base_dir.iterdir() if d.is_dir() and d.name != "temp"]
+    
+    print(f"Erstelle Datensatz aus den Klassen: {valid_classes}")
+    
+    for gesture_class in valid_classes:
+        class_dir = base_dir / gesture_class
+        files = list(class_dir.glob("*.npy"))
+        
+        for file in files:
+            trajectory = np.load(file)
+            
+            # Validierung: Sind genug Datenpunkte da? (z.B. mind. 10 Frames)
+            if len(trajectory) < 10:
+                print(f"Ignoriere {file.name} (zu kurz: {len(trajectory)} Frames)")
+                continue
+                
+            # Daten hinzufügen
+            X.append(trajectory)
+            lengths.append(len(trajectory))
+            labels.append(gesture_class)
+            
+    if not X:
+        print("Fehler: Keine gültigen Daten gefunden!")
+        return
+
+    # hmmlearn erwartet X als ein zusammenhängendes 2D Array
+    X_concat = np.concatenate(X)
+    
+    # Datensatz zusammenbauen
+    dataset = {
+        "X": X_concat,
+        "lengths": lengths,
+        "labels": labels,
+        "classes": valid_classes
+    }
+    
+    # Speichern als Pickle-Datei (Perfekt für Python-Machine-Learning)
+    output_file = Path(output_path)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    with open(output_file, 'wb') as f:
+        pickle.dump(dataset, f)
+        
+    print(f" Datensatz erfolgreich gespeichert unter: {output_file}")
+    print(f"   Gesamtpunkte: {len(X_concat)}, Anzahl Gesten: {len(lengths)}")
