@@ -3,6 +3,7 @@ from collections import deque
 import numpy as np
 import os
 import time
+import ctypes
 
 class Preprocessor(Module):
     """
@@ -18,7 +19,7 @@ class Preprocessor(Module):
 
     def start(self, data):
         self.outputSignal = "preprocessor"
-        
+        self.last_saved_file = None
         # Konfiguration sicher laden (wie beim TrailMarker)
         config = data.get("config", {}).get("preprocessor", {})
         
@@ -45,11 +46,24 @@ class Preprocessor(Module):
         hand_landmarks = data.get("detector")
         result_trajectory = None
 
+        # NEU: Nur die Löschen-Taste (Backspace) abfragen
+        is_backspace_pressed = (ctypes.windll.user32.GetAsyncKeyState(0x08) & 0x8000) != 0
+
+        # ==========================================
+        # UNDO-FUNKTION (Backspace gedrückt)
+        # ==========================================
+        if is_backspace_pressed and self.last_saved_file is not None:
+            if os.path.exists(self.last_saved_file):
+                os.remove(self.last_saved_file)
+                print(f"🗑️ UNDO: Letzte Aufnahme gelöscht!")
+                self.last_saved_file = None # Verhindert doppeltes Löschen
+                time.sleep(0.3) # Kurze Pause gegen Tasten-Flackern
+
+        # DEINE ALTE AUTOMATISCHE LOGIK:
         if hand_landmarks:
             # Hand im Bild: Zähler zurücksetzen
             self.lost_frames = 0
             
-            # Relative MediaPipe-Werte (0.0 bis 1.0)
             x = hand_landmarks.landmark[self.finger_idx].x
             y = hand_landmarks.landmark[self.finger_idx].y
             self.history.append([x, y])
@@ -62,14 +76,10 @@ class Preprocessor(Module):
             # Prüfen ob wir genug Punkte für eine Geste gesammelt haben
             if len(self.history) >= self.min_steps:
                 
-                # 1. In np Array umwandeln [cite: 16]
                 traj = np.array(self.history)
-                
-                # 2. Zentrieren (Mittelwert abziehen, Geste rutscht auf Ursprung 0,0)
                 center = np.mean(traj, axis=0)
                 traj_centered = traj - center
                 
-                # 3. Skalieren (durch maximale Ausdehnung teilen, Geste passt exakt in eine Box von -1 bis 1)
                 max_dist = np.max(np.abs(traj_centered))
                 if max_dist > 0:
                     traj_normalized = traj_centered / max_dist
@@ -77,25 +87,23 @@ class Preprocessor(Module):
                     traj_normalized = traj_centered
                     
                 result_trajectory = traj_normalized
-                                # Dateiname erzeugen
-                timestamp = int(time.time() * 1000)
                 
-                filename = os.path.join(
-                    self.class_path,
-                    f"{self.label}_{timestamp}.npy"
-                )               
+                timestamp = int(time.time() * 1000)
+                filename = os.path.join(self.class_path, f"{self.label}_{timestamp}.npy")               
                 
                 # Datei speichern
                 np.save(filename, traj_normalized)
                 
-                print(f" Gespeichert: {filename}")
+                # NEU: Dateiname für den Undo-Button merken
+                self.last_saved_file = filename
                 
-                print(f" Geste erfasst! Länge: {len(traj_normalized)} Punkte")
+                # Zähler anzeigen
+                anzahl_aktuell = len(os.listdir(self.class_path))
+                print(f"✅ Gespeichert! (Aufnahme {anzahl_aktuell}/40)")
                 
             # Historie leeren
             self.history.clear()
 
-        # Rückgabe an Framework
         return {self.outputSignal: result_trajectory}
     def stop(self, data):
         pass
