@@ -1,168 +1,150 @@
+import pickle
+from collections import defaultdict
+from typing import List, Sequence, Any
+
+import numpy as np
+
+try:
+    from hmmlearn.hmm import GaussianHMM
+except Exception:  # pragma: no cover - optional dependency
+    GaussianHMM = None
+
+
 class HMMClassifier:
-    """
-    TODO: Implementiere einen HMM-basierten Klassifikator
+    """HMM-basierter Klassifikator.
 
-    Ziel:
-    -----
-    Entwickle einen Klassifikator, der zeitliche Sequenzen mit Hilfe von
-    Hidden-Markov-Modellen (HMMs) klassifiziert. Für HMMs können libraries wie
-    :mod:`hmmlearn` benutzt werden
+    Einfacher Wrapper um :class:`hmmlearn.hmm.GaussianHMM`.
 
-    Grundidee:
-    ----------
-    - Trainiere ein Modell pro Klasse
-    - Bewerte neue Sequenzen anhand der Likelihood unter jedem Modell
-    - Wähle die Klasse mit der höchsten Wahrscheinlichkeit
+    API:
+    - `fit(sequences, labels, **hmm_kwargs)` trainiert ein HMM pro Klasse
+    - `decision_function(sequences)` gibt Log-Likelihoods zurück
+    - `predict(sequences)` gibt für jede Sequenz das beste Label zurück
 
-    .. note::
-       Wie genau deine Modelle aussehen (z. B. Anzahl Zustände, Features,
-       Initialisierung etc.) ist bewusst nicht vorgegeben.
-
-    Wichtige Designentscheidungen:
-    ------------------------------
-    - Wie strukturierst du deine Trainingsdaten?
-    - Wie repräsentierst du Sequenzen?
-    - Wie verbindest du mehrere Sequenzen mit Labels?
-
-    Speicherung:
-    ------------
-    Du solltest dir überlegen:
-    - Wie speicherst du dein trainiertes Modell?
-    - Wie lädst du es später wieder?
-    - Welche Informationen müssen persistiert werden (z. B. Klassen, Modelle)?
-
-    .. tip::
-       ``pickle`` ist eine einfache Möglichkeit, Modelle zu speichern.
-       Alternativ kannst du auch eigene Formate definieren.
-
-    Evaluation:
-    -----------
-    Für sinnvolles Training solltest du unbedingt:
-    - eine eigene ``train_test_split``-Logik implementieren
-    - Trainings- und Testdaten sauber trennen
-
-    .. warning::
-       Wenn du Training und Test nicht trennst, sind deine Ergebnisse nicht aussagekräftig.
-
-    Erweiterung (optional):
-    -----------------------
-    - Implementiere eine Grid Search für Hyperparameter
-      (z. B. Anzahl Zustände, Modellstruktur)
-    - Vergleiche verschiedene Modellkonfigurationen
-
+    Hinweis: `hmmlearn` wird nicht zwingend installiert. Installiere es mit
+    ``pip install hmmlearn`` wenn du echte HMMs nutzen willst.
     """
 
-    def fit(self):
-        """
-        TODO: Trainiere den Klassifikator
+    def __init__(self, n_components: int = 4, covariance_type: str = "diag", n_iter: int = 100,
+                 random_state: int | None = None):
+        self.n_components = n_components
+        self.covariance_type = covariance_type
+        self.n_iter = n_iter
+        self.random_state = random_state
 
-        Ziel:
-        -----
-        Trainiere ein separates HMM für jede Klasse basierend auf den
-        gegebenen Sequenzen.
+        self.models: dict[Any, Any] = {}
+        self.classes_: List[Any] = []
 
+    def _ensure_hmm(self):
+        if GaussianHMM is None:
+            raise ImportError("hmmlearn is required for HMMClassifier. Install it with `pip install hmmlearn`.")
 
-        Anforderungen / Ideen:
-        ----------------------
-        - Zerlege die Daten so, dass du pro Klasse alle Sequenzen bekommst
-        - Trainiere ein Modell pro Klasse
-        - Speichere die trainierten Modelle intern
+    def fit(self, sequences: Sequence[np.ndarray], labels: Sequence[Any], **hmm_kwargs):
+        """Trainiere ein HMM pro Klasse.
 
-        .. tip::
-           Überlege dir eine sinnvolle Datenstruktur wie:
-           ``label -> (Daten, Sequenzlängen)``
-
-        .. note::
-           Die konkrete Umsetzung ist offen:
-            - Wie genau du Daten aufteilst
-            - Wie du dein Modell initialisierst
-            - Welche Hyperparameter du verwendest
-
-        .. warning::
-           Achte darauf, dass:
-            - ``lengths`` zu ``X`` passen
-            - Labels korrekt zu Sequenzen zugeordnet sind
-
-        Erweiterung:
-        ------------
-        - Experimentiere mit verschiedenen Modellgrößen
-        - Nutze eine Grid Search zur Optimierung
-        - Verwende ein separates Testset zur Evaluation
+        Parameters
+        ----------
+        sequences : sequence of (T_i, n_features) arrays
+            Die Trainingssequenzen.
+        labels : sequence
+            Labels für jede Sequenz (gleiche Länge wie `sequences`).
+        **hmm_kwargs : dict
+            Zusätzliche Parameter, die an ``GaussianHMM`` weitergegeben werden.
 
         Returns
         -------
         self
         """
-        pass
+        self._ensure_hmm()
 
-    def decision_function(self):
-        """
-        TODO: Berechne Scores für jede Klasse
+        if len(sequences) != len(labels):
+            raise ValueError("`sequences` und `labels` müssen die gleiche Länge haben")
 
-        Ziel:
-        -----
-        Berechne für jede Eingabesequenz einen Score pro Klasse
-        (z. B. Log-Likelihood unter jedem Modell).
+        # Gruppiere Sequenzen pro Label
+        grouped = defaultdict(list)
+        for seq, lab in zip(sequences, labels):
+            arr = np.asarray(seq)
+            if arr.ndim == 1:
+                arr = arr.reshape(-1, 1)
+            grouped[lab].append(arr)
 
-        Anforderungen / Ideen:
-        ----------------------
-        - Zerlege die Eingabe in einzelne Sequenzen
-        - Berechne für jede Sequenz:
-            Score unter jedem Klassenmodell
-        - Gib eine Struktur zurück wie:
-            ``(n_sequences, n_classes)``
+        self.models = {}
+        self.classes_ = []
 
-        .. tip::
-           Die meisten HMM-Implementierungen bieten eine
-           ``score``-Funktion für Likelihoods.
+        for lab, seqs in grouped.items():
+            X = np.vstack(seqs)
+            lengths = [s.shape[0] for s in seqs]
 
-        .. note::
-           Du entscheidest selbst:
-            - Welcher Score verwendet wird
-            - Wie du mehrere Sequenzen behandelst
+            model = GaussianHMM(n_components=self.n_components,
+                                covariance_type=self.covariance_type,
+                                n_iter=self.n_iter,
+                                random_state=self.random_state,
+                                **hmm_kwargs)
+            model.fit(X, lengths)
+            self.models[lab] = model
+            self.classes_.append(lab)
 
-        .. warning::
-           Stelle sicher, dass:
-            - Die Reihenfolge der Klassen konsistent ist
-            - Scores vergleichbar sind
+        return self
 
-        Returns
-        -------
-        scores : array-like
-            Score pro Sequenz und Klasse
-        """
-        pass
+    def decision_function(self, sequences: Sequence[np.ndarray]) -> np.ndarray:
+        """Berechne Log-Likelihoods für jede Sequenz und Klasse.
 
-    def predict(self):
-        """
-        TODO: Sage Klassenlabels voraus
-
-        Ziel:
-        -----
-        Weise jeder Eingabesequenz ein Label zu.
-
-        Anforderungen / Ideen:
-        ----------------------
-        - Nutze deine ``decision_function``
-        - Wähle für jede Sequenz die Klasse mit bestem Score
-
-        .. tip::
-           Typischerweise:
-           ``argmax über Klassen``
-
-        .. note::
-           Achte darauf, dass:
-            - Klassenreihenfolge konsistent ist
-            - Rückgabewerte klar interpretierbar sind
-
-        Erweiterung:
-        ------------
-        - Gib zusätzlich Unsicherheiten oder Scores zurück
-        - Implementiere Top-k Vorhersagen
+        Parameters
+        ----------
+        sequences : sequence of (T_i, n_features) arrays
 
         Returns
         -------
-        labels : list
-            Vorhergesagte Labels
+        scores : ndarray, shape (n_sequences, n_classes)
+            Log-Likelihoods; größere Werte bedeuten bessere Übereinstimmung.
         """
-        pass
+        if not self.models:
+            raise ValueError("Der Klassifikator ist nicht trainiert. Rufe zuerst `fit` auf.")
+
+        n = len(sequences)
+        m = len(self.classes_)
+        scores = np.full((n, m), -np.inf, dtype=float)
+
+        for i, seq in enumerate(sequences):
+            arr = np.asarray(seq)
+            if arr.ndim == 1:
+                arr = arr.reshape(-1, 1)
+
+            for j, lab in enumerate(self.classes_):
+                model = self.models[lab]
+                try:
+                    scores[i, j] = model.score(arr)
+                except Exception:
+                    scores[i, j] = -np.inf
+
+        return scores
+
+    def predict(self, sequences: Sequence[np.ndarray]) -> List[Any]:
+        """Gebe für jede Sequenz das Label mit der höchsten Likelihood zurück."""
+        scores = self.decision_function(sequences)
+        idx = np.argmax(scores, axis=1)
+        return [self.classes_[i] for i in idx]
+
+    def save(self, path: str) -> None:
+        """Speichere den Klassifikator inklusive Hyperparametern und Modellen."""
+        with open(path, "wb") as f:
+            pickle.dump({
+                "n_components": self.n_components,
+                "covariance_type": self.covariance_type,
+                "n_iter": self.n_iter,
+                "random_state": self.random_state,
+                "classes_": self.classes_,
+                "models": self.models,
+            }, f)
+
+    @classmethod
+    def load(cls, path: str) -> "HMMClassifier":
+        with open(path, "rb") as f:
+            state = pickle.load(f)
+
+        obj = cls(n_components=state.get("n_components", 4),
+                  covariance_type=state.get("covariance_type", "diag"),
+                  n_iter=state.get("n_iter", 100),
+                  random_state=state.get("random_state", None))
+        obj.classes_ = state.get("classes_", [])
+        obj.models = state.get("models", {})
+        return obj
