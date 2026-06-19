@@ -25,7 +25,7 @@ def visualize_dataset(base_path="dataset", label="A", start=0, stop=5):
     plt.ylabel("Y-Koordinate (Normalisiert)")
     plt.show()
 
-def replay_recordings(base_path="dataset", label="E"):
+def replay_recordings(base_path="dataset", label="I"):
     search_pattern = os.path.join(base_path, label, "*.npy")
     dateien = glob.glob(search_pattern)
     
@@ -54,4 +54,4 @@ def replay_recordings(base_path="dataset", label="E"):
 # ==========================================
 if __name__ == "__main__":
     print("Starte Datenexploration...")
-    visualize_dataset(label="I", start=0, stop=7)
+    visualize_dataset(label="I", start=0, stop=4)
