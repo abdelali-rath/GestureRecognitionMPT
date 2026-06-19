@@ -25,7 +25,7 @@ class Preprocessor(Module):
         # Konfiguration sicher laden (wie beim TrailMarker)
         config = data.get("config", {}).get("preprocessor", {})
         
-        self.label = config.get("label", "Y")
+        self.label = config.get("label", "D")
         self.dataset_path = config.get("dataset_path", "dataset")
 
 # Klassenordner erstellen
