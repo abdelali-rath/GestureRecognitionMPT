@@ -3,6 +3,8 @@ from collections import defaultdict
 from typing import List, Sequence, Any
 
 import numpy as np
+import argparse
+from pathlib import Path
 
 try:
     from hmmlearn.hmm import GaussianHMM
@@ -148,3 +150,64 @@ class HMMClassifier:
         obj.classes_ = state.get("classes_", [])
         obj.models = state.get("models", {})
         return obj
+
+
+def build_dataset_from_data_dir(base_dir: str = "data", min_length: int = 10):
+    """Lade Sequenzen aus `data/<label>/*.npy` und gebe (sequences, labels).
+
+    Ignoriere Verzeichnisse ohne .npy Dateien und Sequenzen kürzer als
+    `min_length`.
+    """
+    base = Path(base_dir)
+    if not base.exists():
+        raise FileNotFoundError(f"Base data directory not found: {base_dir}")
+
+    sequences = []
+    labels = []
+
+    for d in sorted([p for p in base.iterdir() if p.is_dir() and p.name != "temp"]):
+        files = sorted(d.glob("*.npy"))
+        if not files:
+            continue
+        for f in files:
+            arr = np.load(f)
+            if arr.ndim == 1:
+                arr = arr.reshape(-1, 1)
+            if len(arr) < min_length:
+                # skip very short sequences
+                continue
+            sequences.append(arr)
+            labels.append(d.name)
+
+    return sequences, labels
+
+
+def _cli():
+    parser = argparse.ArgumentParser(description="Train HMMClassifier from data/* folders")
+    parser.add_argument("--data", default="dataset", help="Base data directory (default: dataset)")
+    parser.add_argument("--min-length", type=int, default=10, help="Minimum frames per sequence")
+    parser.add_argument("--n-components", type=int, default=4)
+    parser.add_argument("--cov", default="diag", help="covariance_type for GaussianHMM")
+    parser.add_argument("--n-iter", type=int, default=100)
+    parser.add_argument("--out", default="dataset/hmm.pkl", help="Output model path")
+    parser.add_argument("--random-state", type=int, default=None)
+    args = parser.parse_args()
+
+    seqs, labs = build_dataset_from_data_dir(args.data, min_length=args.min_length)
+    if not seqs:
+        print("No valid sequences found. Nothing to train.")
+        return
+
+    print(f"Found {len(seqs)} sequences across {len(set(labs))} classes")
+    clf = HMMClassifier(n_components=args.n_components,
+                        covariance_type=args.cov,
+                        n_iter=args.n_iter,
+                        random_state=args.random_state)
+    clf.fit(seqs, labs)
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    clf.save(args.out)
+    print(f"Saved trained model to {args.out}")
+
+
+if __name__ == "__main__":
+    _cli()
