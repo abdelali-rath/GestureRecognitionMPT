@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 import time
 import pickle
 from pathlib import Path
@@ -8,6 +9,11 @@ from typing import List, Tuple
 
 import cv2
 import numpy as np
+
+# Ensure imports work both when running as a script and as a package module.
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from GestureRecognition.hmmclassifier import HMMClassifier, build_dataset_from_data_dir
 
@@ -67,6 +73,8 @@ def run_live_inference_with_pipeline(model_path: str = "dataset/hmm.pkl", buffer
 
     clf = HMMClassifier.load(model_path)
     cap = cv2.VideoCapture(camera_id)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
     if not cap.isOpened():
         raise RuntimeError(f"Kamera {camera_id} konnte nicht geöffnet werden.")
 
@@ -77,6 +85,10 @@ def run_live_inference_with_pipeline(model_path: str = "dataset/hmm.pkl", buffer
         min_tracking_confidence=0.75,
         model_complexity=1
     )
+
+    window_name = "HMM Live Inference"
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(window_name, 1280, 720)
 
     history = deque(maxlen=buffer_size)
     trail = deque(maxlen=400)
@@ -186,7 +198,7 @@ def run_live_inference_with_pipeline(model_path: str = "dataset/hmm.pkl", buffer
             cv2.putText(frame, "Warte auf genug Frames...", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
 
         cv2.putText(frame, "ESC zum Beenden", (10, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1)
-        cv2.imshow("HMM Live Inference", frame)
+        cv2.imshow(window_name, frame)
 
     cap.release()
     cv2.destroyAllWindows()
@@ -194,9 +206,21 @@ def run_live_inference_with_pipeline(model_path: str = "dataset/hmm.pkl", buffer
     print("[OK] Live-Inference beendet.")
 
 
+def _prompt_choice(prompt: str, choices: list[str], default: str | None = None) -> str:
+    choice_text = "/".join(choices)
+    while True:
+        default_text = f" [{default}]" if default else ""
+        response = input(f"{prompt} ({choice_text}){default_text}: ").strip().lower()
+        if not response and default:
+            return default
+        if response in choices:
+            return response
+        print(f"Ungültiger Wert. Bitte eine der folgenden Optionen wählen: {choice_text}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Train, evaluate and run HMM inference")
-    parser.add_argument("--mode", choices=["train", "evaluate", "live"], required=True)
+    parser.add_argument("--mode", choices=["train", "evaluate", "live"], required=False)
     parser.add_argument("--model", default="dataset/hmm.pkl")
     parser.add_argument("--data", default="dataset")
     parser.add_argument("--min-length", type=int, default=10)
@@ -208,6 +232,13 @@ def main():
     parser.add_argument("--buffer-size", type=int, default=140)
     parser.add_argument("--min-steps", type=int, default=15)
     args = parser.parse_args()
+
+    if args.mode is None:
+        print("Kein Modus angegeben.")
+        args.mode = _prompt_choice("Wähle den Modus", ["train", "evaluate", "live"], default="live")
+
+    if args.mode in {"evaluate", "train", "live"} and not args.model:
+        args.model = input("Modelldatei (Standard: dataset/hmm.pkl): ").strip() or "dataset/hmm.pkl"
 
     if args.mode == "train":
         train_model(data_dir=args.data, out_path=args.model, min_length=args.min_length,
