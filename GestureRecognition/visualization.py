@@ -1,149 +1,57 @@
-def visualize_dataset():
-    """
-    TODO: Visualisierung des eigenen Datensatzes
+import os
+import glob
+import numpy as np
+import matplotlib.pyplot as plt
 
-    Ziel:
-    -----
-    Entwickle eine Möglichkeit, deinen aufgenommenen Datensatz visuell zu
-    inspizieren und zu verstehen.
+def visualize_dataset(base_path="dataset", label="A", start=0, stop=5):
+    search_pattern = os.path.join(base_path, label, "*.npy")
+    dateien = glob.glob(search_pattern)
+    
+    if not dateien:
+        print(f"⚠️ Keine Daten für '{label}' gefunden! Suchpfad: {search_pattern}")
+        return
 
-    Warum ist das wichtig?
-    ----------------------
-    - Du musst nachvollziehen können, was dein Modell eigentlich „sieht“
-    - Fehler im Datensatz lassen sich visuell oft sofort erkennen
-    - Qualität der Daten ist entscheidend für die Modellperformance
+    plt.figure(figsize=(8, 8))
+    plt.title(f"Datenexploration: Trajektorien der Klasse '{label}'")
 
-    Anforderungen / Ideen:
-    ----------------------
-    - Lade deinen Trainingsdatensatz
-    - Visualisiere mehrere Sequenzen pro Klasse
-    - Stelle sicher, dass:
-        - unterschiedliche Gesten klar unterscheidbar sind
-        - Sequenzen sinnvoll aussehen (keine Ausreißer, keine leeren Daten)
+    for datei_pfad in dateien[start:stop]:
+        traj = np.load(datei_pfad)
+        plt.plot(traj[:, 0], traj[:, 1], marker='o', markersize=3, label=os.path.basename(datei_pfad))
 
-    .. tip::
-       Ein einfacher Ansatz:
-         - Plotte Trajektorien (z. B. x/y-Koordinaten)
-         - Zeige mehrere Beispiele pro Klasse übereinander
+    plt.gca().invert_yaxis()
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.legend(loc="upper right", fontsize="small")
+    plt.xlabel("X-Koordinate (Normalisiert)")
+    plt.ylabel("Y-Koordinate (Normalisiert)")
+    plt.show()
 
-    .. note::
-       Du kannst selbst entscheiden:
-         - Wie viele Sequenzen du anzeigst
-         - Welche Features du visualisierst
-         - Ob du interaktive Elemente einbaust
+def replay_recordings(base_path="dataset", label="I"):
+    search_pattern = os.path.join(base_path, label, "*.npy")
+    dateien = glob.glob(search_pattern)
+    
+    if not dateien:
+        return
 
-    .. tip::
-       Interaktivität (z. B. Klick auf eine Sequenz) kann hilfreich sein,
-       um einzelne Beispiele genauer zu untersuchen.
+    datei_pfad = dateien[0]
+    traj = np.load(datei_pfad)
+    x, y = traj[:, 0], traj[:, 1]
+    
+    plt.figure(figsize=(6, 6))
+    plt.title(f"Replay-Modus: {os.path.basename(datei_pfad)}")
+    plt.gca().invert_yaxis()
+    plt.xlim(-1.1, 1.1)
+    plt.ylim(1.1, -1.1) 
+    plt.grid(True, linestyle='--', alpha=0.5)
+    
+    for i in range(1, len(x)):
+        plt.plot(x[:i], y[:i], color='blue', linewidth=2, marker='o', markersize=4)
+        plt.pause(0.05)
+        
+    plt.show()
 
-    Abgabe:
-    -------
-    - Du musst in der Lage sein, deinen Datensatz visuell zu präsentieren
-    - Du solltest erklären können:
-        - Wie unterscheiden sich die Klassen?
-        - Gibt es problematische Beispiele?
-
-    Erweiterung (optional):
-    -----------------------
-    - Mittelwerte oder typische Sequenzen pro Klasse darstellen
-    - Ausreißer automatisch erkennen
-    """
-    pass
-
-def evaluate_classifier():
-    """
-    TODO: Evaluation deines Klassifikators
-
-    Ziel:
-    -----
-    Implementiere eine sinnvolle Auswertung deines Modells auf Testdaten.
-
-    Warum ist das wichtig?
-    ----------------------
-    - Du brauchst objektive Metriken für die Qualität deines Modells
-    - Training allein reicht nicht, entscheidend ist die Generalisierung
-
-    Anforderungen / Ideen:
-    ----------------------
-    - Lade ein trainiertes Modell
-    - Lade Testdaten (getrennt vom Training!)
-    - Berechne Vorhersagen
-    - Vergleiche Vorhersagen mit Ground Truth
-
-    Metriken:
-    ---------
-    - Klassifikationsgenauigkeit (Accuracy)
-    - Confusion Matrix
-
-    .. tip::
-       Eine Confusion Matrix zeigt dir:
-         - Welche Klassen gut erkannt werden
-         - Wo dein Modell Fehler macht
-
-    .. warning::
-       Testdaten dürfen **nicht** aus dem Training stammen!
-
-    Interpretation:
-    ---------------
-    Du solltest erklären können:
-    - Welche Klassen gut funktionieren
-    - Welche Klassen verwechselt werden
-    - Warum das passieren könnte
-
-    .. note::
-       Schlechte Performance liegt oft an:
-         - schlechten Trainingsdaten
-         - zu wenigen Beispielen
-         - ungeeigneten Features
-
-    Erweiterung (optional):
-    -----------------------
-    - Weitere Metriken (Precision, Recall, F1)
-    - Vergleich verschiedener Modelle
-    """
-    pass
-
-
-def replay_recordings():
-    """
-    TODO: Exploration und Replay der aufgenommenen Rohdaten
-
-    Ziel:
-    -----
-    Ermögliche es, aufgenommene Sequenzen erneut abzuspielen
-    und qualitativ zu überprüfen.
-
-    Warum ist das wichtig?
-    ----------------------
-    - Du kannst überprüfen, ob deine Aufnahmen korrekt sind
-    - Fehler in der Datenerfassung werden früh sichtbar
-    - Du entwickelst ein besseres Verständnis für deine Daten
-
-    Anforderungen / Ideen:
-    ----------------------
-    - Lade gespeicherte Aufnahmen
-    - Spiele diese erneut ab (z. B. über SignalHub / Replay-Modus)
-    - Iteriere über verschiedene Labels und Beispiele
-
-    .. tip::
-       Besonders hilfreich:
-         - Vergleiche mehrere Beispiele derselben Klasse
-         - Suche nach inkonsistenten Bewegungen
-
-    .. warning::
-       Schlechte oder inkonsistente Aufnahmen führen fast immer zu
-       schlechten Modellen. Überprüfe deine Daten frühzeitig!
-
-    Abgabe:
-    -------
-    - Du solltest zeigen können, wie deine Daten aussehen (Replay)
-    - Du solltest erklären können:
-        - Welche Beispiele gut sind
-        - Welche problematisch sind
-
-    Erweiterung (optional):
-    -----------------------
-    - Automatisches Filtern schlechter Sequenzen
-    - Kombination mit Visualisierung
-    """
-    pass
+# ==========================================
+# HIER IST DER START-KNOPF
+# ==========================================
+if __name__ == "__main__":
+    print("Starte Datenexploration...")
+    visualize_dataset(label="U", start=0, stop=10)
