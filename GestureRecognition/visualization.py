@@ -25,33 +25,7 @@ def visualize_dataset(base_path="dataset", label="A", start=0, stop=5):
     plt.ylabel("Y-Koordinate (Normalisiert)")
     plt.show()
 
-def replay_recordings(base_path="dataset", label="I"):
-    search_pattern = os.path.join(base_path, label, "*.npy")
-    dateien = glob.glob(search_pattern)
-    
-    if not dateien:
-        return
 
-    datei_pfad = dateien[0]
-    traj = np.load(datei_pfad)
-    x, y = traj[:, 0], traj[:, 1]
-    
-    plt.figure(figsize=(6, 6))
-    plt.title(f"Replay-Modus: {os.path.basename(datei_pfad)}")
-    plt.gca().invert_yaxis()
-    plt.xlim(-1.1, 1.1)
-    plt.ylim(1.1, -1.1) 
-    plt.grid(True, linestyle='--', alpha=0.5)
-    
-    for i in range(1, len(x)):
-        plt.plot(x[:i], y[:i], color='blue', linewidth=2, marker='o', markersize=4)
-        plt.pause(0.05)
-        
-    plt.show()
-
-# ==========================================
-# HIER IST DER START-KNOPF
-# ==========================================
 if __name__ == "__main__":
     print("Starte Datenexploration...")
     visualize_dataset(label="U", start=0, stop=10)
