@@ -29,11 +29,17 @@ class Preprocessor(Module):
             pass
 
     def start(self, data):
+        """
+        Wird vom Framework beim Start aufgerufen. Initialisiert alle wichtigen Variablen.
+        """
         self.outputSignal = "preprocessor"
         self.is_recording = False
-        self.was_space_pressed = False
         
-        # Temporären Ordner für Rohaufnahmen vorbereiten
+        self.was_space_pressed = False
+        self.was_esc_pressed = False
+        self.last_saved_file = None  # Merkt sich die letzte Aufnahme für die Lösch-Funktion
+        
+        # Ordner für deine Aufnahmen vorbereiten
         self.temp_path = "dataset/P"
         os.makedirs(self.temp_path, exist_ok=True)
 
@@ -44,7 +50,7 @@ class Preprocessor(Module):
 
         self.history = deque(maxlen=self.buffer_size)
         
-        # Tastatur-Listener für die Aufnahme-Steuerung starten
+        # Tastatur-Listener im Hintergrund starten
         self.pressed_keys.clear()
         self.listener = keyboard.Listener(on_press=self._on_press, on_release=self._on_release)
         self.listener.start()
@@ -54,10 +60,27 @@ class Preprocessor(Module):
         hand_landmarks = data.get("detector")
         result_trajectory = None
 
-        is_space_pressed = keyboard.Key.space in self.pressed_keys
+        # Wir nutzen ENTER statt der blockierten Leertaste
+        is_record_pressed = keyboard.Key.enter in self.pressed_keys
+        is_delete_pressed = (keyboard.Key.esc in self.pressed_keys) or (keyboard.Key.backspace in self.pressed_keys)
 
-        # Kippschalter: Start / Stopp mit Leertaste
-        if is_space_pressed and not self.was_space_pressed:
+        # -------------------------------------------------------------------
+        # 🗑️ LÖSCHEN DER LETZTEN AUFNAHME (Exit / ESC gedrückt)
+        # -------------------------------------------------------------------
+        if is_delete_pressed and not self.was_esc_pressed:
+            if self.last_saved_file and os.path.exists(self.last_saved_file):
+                os.remove(self.last_saved_file)
+                print(f"🗑️ [Pipeline] Letzte Aufnahme gelöscht: {os.path.basename(self.last_saved_file)}")
+                self.last_saved_file = None
+            else:
+                print("⚠️ [Pipeline] Keine vorherige Aufnahme zum Löschen gefunden.")
+        
+        self.was_esc_pressed = is_delete_pressed
+
+        # -------------------------------------------------------------------
+        # 🔴 AUFNAHME STARTEN / STOPPEN (ENTER gedrückt)
+        # -------------------------------------------------------------------
+        if is_record_pressed and not self.was_space_pressed:
             if not self.is_recording:
                 self.is_recording = True
                 self.history.clear()
@@ -67,28 +90,32 @@ class Preprocessor(Module):
                 if len(self.history) >= self.min_steps:
                     traj = np.array(self.history)
                     
-                    # 1. Zentrieren
                     center = np.mean(traj, axis=0)
                     traj_centered = traj - center
                     
-                    # 2. Normalisieren
                     max_dist = np.max(np.abs(traj_centered))
                     traj_normalized = traj_centered / max_dist if max_dist > 0 else traj_centered
                     
                     result_trajectory = traj_normalized
                     
-                    # Temporär wegspeichern für das spätere Labeling-Skript
+                    label = os.path.basename(self.temp_path)
                     timestamp = int(time.time() * 1000)
-                    filename = os.path.join(self.temp_path, f"{self.temp_path}_{timestamp}.npy")
+                    filename = os.path.join(self.temp_path, f"{label}_{timestamp}.npy")
+                    
                     np.save(filename, traj_normalized)
-                    print(f"✅ [Pipeline] Temporär gesichert: {filename} ({len(traj)} Frames)")
+                    self.last_saved_file = filename 
+                    
+                    print(f"✅ [Pipeline] Gesichert: {filename} ({len(traj)} Frames)")
                 else:
                     print("⚠️ [Pipeline] Geste zu kurz, ignoriert.")
                 
                 self.history.clear()
 
-        self.was_space_pressed = is_space_pressed
+        self.was_space_pressed = is_record_pressed
 
+        # -------------------------------------------------------------------
+        # ✍️ KOORDINATEN AUFZEICHNEN
+        # -------------------------------------------------------------------
         if self.is_recording and hand_landmarks:
             x = hand_landmarks.landmark[self.finger_idx].x
             y = hand_landmarks.landmark[self.finger_idx].y
