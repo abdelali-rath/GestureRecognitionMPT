@@ -16,30 +16,33 @@ class Preprocessor(Module):
             outputSchema={"type": "object", "properties": {outputSignal: {}}},
             name="preprocessor",
         )
-        self.pressed_keys = set()
         self.listener = None
 
     def _on_press(self, key):
-        self.pressed_keys.add(key)
-
-    def _on_release(self, key):
+        """
+        Wird im exakten Moment des Drückens aufgerufen.
+        """
         try:
-            self.pressed_keys.remove(key)
-        except KeyError:
+            if hasattr(key, 'char') and key.char == 'r':
+                # 🔥 BLITZ-LÖSCHUNG: Wenn wir gleich STARTEN, löschen wir die 
+                # Historie DIREKT hier im Tastatur-Thread. Keine Millisekunde Verzögerung!
+                if not self.is_recording:
+                    self.history.clear()
+                self.toggle_recording = True
+                
+            elif key == keyboard.Key.esc or key == keyboard.Key.backspace:
+                self.trigger_delete = True
+        except Exception:
             pass
 
     def start(self, data):
-        """
-        Wird vom Framework beim Start aufgerufen. Initialisiert alle wichtigen Variablen.
-        """
         self.outputSignal = "preprocessor"
         self.is_recording = False
         
-        self.was_space_pressed = False
-        self.was_esc_pressed = False
-        self.last_saved_file = None  # Merkt sich die letzte Aufnahme für die Lösch-Funktion
+        self.toggle_recording = False
+        self.trigger_delete = False
+        self.last_saved_file = None  
         
-        # Ordner für deine Aufnahmen vorbereiten
         self.temp_path = "dataset/P"
         os.makedirs(self.temp_path, exist_ok=True)
 
@@ -48,11 +51,10 @@ class Preprocessor(Module):
         self.buffer_size = config.get("buffer_size", 140)
         self.min_steps = config.get("min_steps", 15)
 
+        # Historie initialisieren
         self.history = deque(maxlen=self.buffer_size)
         
-        # Tastatur-Listener im Hintergrund starten
-        self.pressed_keys.clear()
-        self.listener = keyboard.Listener(on_press=self._on_press, on_release=self._on_release)
+        self.listener = keyboard.Listener(on_press=self._on_press)
         self.listener.start()
         return {}
 
@@ -60,31 +62,29 @@ class Preprocessor(Module):
         hand_landmarks = data.get("detector")
         result_trajectory = None
 
-        # Wir nutzen ENTER statt der blockierten Leertaste
-        is_record_pressed = keyboard.Key.enter in self.pressed_keys
-        is_delete_pressed = (keyboard.Key.esc in self.pressed_keys) or (keyboard.Key.backspace in self.pressed_keys)
-
         # -------------------------------------------------------------------
-        # 🗑️ LÖSCHEN DER LETZTEN AUFNAHME (Exit / ESC gedrückt)
+        # 🗑️ LÖSCHEN DER LETZTEN AUFNAHME
         # -------------------------------------------------------------------
-        if is_delete_pressed and not self.was_esc_pressed:
+        if self.trigger_delete:
+            self.trigger_delete = False  
             if self.last_saved_file and os.path.exists(self.last_saved_file):
                 os.remove(self.last_saved_file)
                 print(f"🗑️ [Pipeline] Letzte Aufnahme gelöscht: {os.path.basename(self.last_saved_file)}")
                 self.last_saved_file = None
             else:
                 print("⚠️ [Pipeline] Keine vorherige Aufnahme zum Löschen gefunden.")
-        
-        self.was_esc_pressed = is_delete_pressed
+            self.history.clear()
 
         # -------------------------------------------------------------------
-        # 🔴 AUFNAHME STARTEN / STOPPEN (ENTER gedrückt)
+        # 🔴 AUFNAHME STARTEN / STOPPEN 
         # -------------------------------------------------------------------
-        if is_record_pressed and not self.was_space_pressed:
+        if self.toggle_recording:
+            self.toggle_recording = False  
+            
             if not self.is_recording:
                 self.is_recording = True
                 self.history.clear()
-                print("🔴 [Pipeline] Aufnahme GESTARTET...")
+                print("🔴 [Pipeline] Aufnahme GESTARTET... (Historie steril gereinigt!)")
             else:
                 self.is_recording = False
                 if len(self.history) >= self.min_steps:
@@ -110,8 +110,6 @@ class Preprocessor(Module):
                     print("⚠️ [Pipeline] Geste zu kurz, ignoriert.")
                 
                 self.history.clear()
-
-        self.was_space_pressed = is_record_pressed
 
         # -------------------------------------------------------------------
         # ✍️ KOORDINATEN AUFZEICHNEN

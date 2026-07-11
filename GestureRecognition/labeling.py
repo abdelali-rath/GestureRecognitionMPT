@@ -1,120 +1,112 @@
 import os
-import shutil
-import numpy as np
 import pickle
+import numpy as np
+import matplotlib.pyplot as plt
 from pathlib import Path
-from pynput import keyboard  # Mac-kompatibler Ersatz für msvcrt!
+from pynput import keyboard
 
-def data_labeling(times: int, label: str):
-    """
-    Klassifiziert und filtert aufgezeichnete Gesten interaktiv aus dem Temp-Ordner.
-    """
-    temp_dir = "dataset/A"
-    final_dir = f"dataset/{label}"
-    
-    os.makedirs(final_dir, exist_ok=True)
-    
-    if not os.path.exists(temp_dir) or len(os.listdir(temp_dir)) == 0:
-        print(f"❌ Keine temporären Aufnahmen in '{temp_dir}' gefunden.")
-        print("Bitte starte zuerst die SignalHub-Pipeline und nimm Gesten mit [LEERTASTE] auf!")
+
+def data_labeling(label):
+
+    folder = Path("dataset") / label
+
+    if not folder.exists():
+        print(f"Ordner {folder} existiert nicht.")
         return
 
-    saved_count = len(os.listdir(final_dir))
-    temp_files = sorted([f for f in os.listdir(temp_dir) if f.endswith('.npy')])
+    files = sorted(folder.glob("*.npy"))
 
-    print(f"\n=== 🏷️ Labeling-Interface für Geste: '{label}' ===")
-    print(f"Bisher existieren {saved_count} Aufnahmen für dieses Label.")
-    print("Steuerung: [ENTER] = Speichern | [SPACE] = Verwerfen | [ESC] = Abbrechen\n")
+    if not files:
+        print("Keine Aufnahmen gefunden.")
+        return
 
-    # Wir belauschen die Tastatur-Events direkt im Terminal
+    print(f"\n=== Labeling {label} ===")
+    print("[ENTER] behalten")
+    print("[SPACE] löschen")
+    print("[ESC] abbrechen\n")
+
+
     with keyboard.Events() as events:
-        for file in temp_files:
-            if saved_count >= times:
-                print(f"🎉 Ziel von {times} Aufnahmen für '{label}' erreicht!")
-                break
 
-            file_path = os.path.join(temp_dir, file)
-            try:
-                data = np.load(file_path)
-            except Exception:
-                continue
-            
-            print(f"📋 Datei {file}: {len(data)} Frames lang. Behalten? ", end="", flush=True)
-            
-            # Warten auf genau einen Tastendruck
+        for file in files:
+
+
+            data = np.load(file)
+
+            plt.figure("Vorschau", figsize=(5,5))
+            plt.clf()
+
+            plt.plot(data[:,0], data[:,1], "-o", markersize=3)
+            plt.scatter(data[0,0], data[0,1], color="green", s=80, label="Start")
+            plt.scatter(data[-1,0], data[-1,1], color="red", s=80, label="Ende")
+
+            plt.xlim(-1.2,1.2)
+            plt.ylim(-1.2,1.2)
+            plt.gca().invert_yaxis()
+            plt.grid()
+            plt.legend()
+
+            plt.show(block=False)
+            plt.pause(0.1)
+
+            print(f"{file.name} ({len(data)} Frames)")
+
             while True:
-                event = events.get(timeout=None)  # Blockiert, bis eine Taste gedrückt wird
-                if isinstance(event, keyboard.Events.Press):
-                    if event.key == keyboard.Key.enter:
-                        # Geste akzeptieren und verschieben
-                        new_filename = f"{label}_{int(os.path.getmtime(file_path))}.npy"
-                        shutil.move(file_path, os.path.join(final_dir, new_filename))
-                        saved_count += 1
-                        print(f"➡️ SPEICHERN unter {new_filename} ({saved_count}/{times})")
-                        break
-                        
-                    elif event.key == keyboard.Key.space:
-                        # Geste löschen
-                        os.remove(file_path)
-                        print("🗑️ VERWORFEN.")
-                        break
-                        
-                    elif event.key == keyboard.Key.esc:
-                        print("\n🛑 Labeling durch Benutzer abgebrochen.")
-                        return
-    return
 
+                event = events.get()
+
+                if not isinstance(event, keyboard.Events.Press):
+                    continue
+
+                if event.key == keyboard.Key.enter:
+
+                    print("✔ behalten\n")
+                    plt.close()
+                    break
+
+                elif event.key == keyboard.Key.space:
+
+                    os.remove(file)
+                    print("✖ gelöscht\n")
+                    plt.close()
+                    break
+
+                elif event.key == keyboard.Key.esc:
+
+                    plt.close()
+                    return
 
 def dataset_building(output_path):
-    """
-    Erstellt den finalen .pkl-Datensatz für das Hidden-Markov-Modell (HMM).
-    """
-    base_dir = Path("dataset")
-    
-    X = []        # Sequenzdaten
-    lengths = []  # Längen der einzelnen Sequenzen
-    labels = []   # Zugehörige Klassenlabels
-    
-    # Alle Ordner außer 'temp' durchsuchen
-    valid_classes = [d.name for d in base_dir.iterdir() if d.is_dir() and d.name != "temp"]
-    
-    print(f"\n📦 Erstelle Datensatz aus den Klassen: {valid_classes}")
-    
-    for gesture_class in valid_classes:
-        class_dir = base_dir / gesture_class
-        files = list(class_dir.glob("*.npy"))
-        
-        for file in files:
-            trajectory = np.load(file)
-            
-            # Validierung aus der TODO (Zu kurze Sequenzen aussortieren)
-            if len(trajectory) < 10:
-                print(f"  ⚠️ Ignoriere {file.name} (zu kurz: {len(trajectory)} Frames)")
-                continue
-                
-            X.append(trajectory)
-            lengths.append(len(trajectory))
-            labels.append(gesture_class)
-            
-    if not X:
-        print("❌ Fehler: Keine gültigen Daten für den Datensatz gefunden!")
-        return
 
-    # Für hmmlearn müssen alle Sequenzen vertikal konkateniert werden (N, 2)
-    X_concat = np.concatenate(X)
-    
+    base = Path("dataset")
+
+    X = []
+    lengths = []
+    labels = []
+
+    classes = [d.name for d in base.iterdir() if d.is_dir()]
+
+    for label in classes:
+
+        for file in (base / label).glob("*.npy"):
+
+            traj = np.load(file)
+
+            if len(traj) < 10:
+                continue
+
+            X.append(traj)
+            lengths.append(len(traj))
+            labels.append(label)
+
     dataset = {
-        "X": X_concat,
+        "X": np.concatenate(X),
         "lengths": lengths,
         "labels": labels,
-        "classes": valid_classes
+        "classes": classes
     }
-    
-    output_file = Path(output_path)
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    
-    with open(output_file, 'wb') as f:
+
+    with open(output_path, "wb") as f:
         pickle.dump(dataset, f)
-        
-    print(f"\n💾 Datensatz erfolgreich gespeichert unter: {output_file}")
-    print(f"   Gesamtpunkte (Features): {len(X_concat)} | Anzahl Gesten: {len(lengths)}")
+
+    print(f"\nDatensatz gespeichert: {output_path}")
