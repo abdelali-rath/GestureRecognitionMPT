@@ -24,8 +24,6 @@ class Preprocessor(Module):
         """
         try:
             if hasattr(key, 'char') and key.char == 'r':
-                # 🔥 BLITZ-LÖSCHUNG: Wenn wir gleich STARTEN, löschen wir die 
-                # Historie DIREKT hier im Tastatur-Thread. Keine Millisekunde Verzögerung!
                 if not self.is_recording:
                     self.history.clear()
                 self.toggle_recording = True
@@ -63,7 +61,7 @@ class Preprocessor(Module):
         result_trajectory = None
 
         # -------------------------------------------------------------------
-        # 🗑️ LÖSCHEN DER LETZTEN AUFNAHME
+        # LÖSCHEN DER LETZTEN AUFNAHME
         # -------------------------------------------------------------------
         if self.trigger_delete:
             self.trigger_delete = False  
@@ -76,7 +74,7 @@ class Preprocessor(Module):
             self.history.clear()
 
         # -------------------------------------------------------------------
-        # 🔴 AUFNAHME STARTEN / STOPPEN 
+        # AUFNAHME STARTEN / STOPPEN 
         # -------------------------------------------------------------------
         if self.toggle_recording:
             self.toggle_recording = False  
@@ -112,7 +110,7 @@ class Preprocessor(Module):
                 self.history.clear()
 
         # -------------------------------------------------------------------
-        # ✍️ KOORDINATEN AUFZEICHNEN
+        # KOORDINATEN AUFZEICHNEN
         # -------------------------------------------------------------------
         if self.is_recording and hand_landmarks:
             x = hand_landmarks.landmark[self.finger_idx].x
