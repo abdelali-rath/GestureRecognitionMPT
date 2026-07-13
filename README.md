@@ -52,6 +52,10 @@ Anschließend startet die Live-Erkennung mit:
 uv run python main.py
 ```
 
+Klicken Sie einmal in das Kamerafenster, damit es den Tastaturfokus besitzt.
+Mit `R` oder `Shift+R` wird die Aufnahme gestartet und mit erneutem Drücken
+beendet und klassifiziert. `Backspace` löscht die zuletzt gespeicherte Aufnahme.
+
 ## Pipeline
 
 Die Verarbeitung erfolgt über mehrere Module:

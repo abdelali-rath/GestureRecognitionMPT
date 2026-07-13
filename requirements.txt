@@ -1,5 +1,4 @@
 hmmlearn>=0.3.3
 mediapipe==0.10.13
-pynput>=1.8.1
 signalhub @ git+https://github.com/jaboll-ai/SignalHub.git@pyproject
 tqdm==4.67.3

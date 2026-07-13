@@ -1,12 +1,26 @@
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
-from pynput import keyboard
 
 try:
     from .paths import iter_npy_files, resolve_dataset_dir, resolve_label_dir, resolve_project_path
 except ImportError:
     from paths import iter_npy_files, resolve_dataset_dir, resolve_label_dir, resolve_project_path
+
+
+def _wait_for_labeling_key(figure):
+    pressed = []
+
+    def on_key(event):
+        key = (event.key or "").lower()
+        if key in {"enter", "space", "escape"}:
+            pressed.append(key)
+
+    connection = figure.canvas.mpl_connect("key_press_event", on_key)
+    while not pressed and plt.fignum_exists(figure.number):
+        plt.pause(0.05)
+    figure.canvas.mpl_disconnect(connection)
+    return pressed[0] if pressed else "escape"
 
 
 def data_labeling(label, base_path="dataset"):
@@ -29,55 +43,40 @@ def data_labeling(label, base_path="dataset"):
     print("[ESC] abbrechen\n")
 
 
-    with keyboard.Events() as events:
+    for file in files:
+        data = np.load(file)
 
-        for file in files:
+        figure = plt.figure("Vorschau", figsize=(5,5))
+        plt.clf()
 
+        plt.plot(data[:,0], data[:,1], "-o", markersize=3)
+        plt.scatter(data[0,0], data[0,1], color="green", s=80, label="Start")
+        plt.scatter(data[-1,0], data[-1,1], color="red", s=80, label="Ende")
 
-            data = np.load(file)
+        plt.xlim(-1.2,1.2)
+        plt.ylim(-1.2,1.2)
+        plt.gca().invert_yaxis()
+        plt.grid()
+        plt.legend()
 
-            plt.figure("Vorschau", figsize=(5,5))
-            plt.clf()
+        plt.show(block=False)
+        plt.pause(0.1)
 
-            plt.plot(data[:,0], data[:,1], "-o", markersize=3)
-            plt.scatter(data[0,0], data[0,1], color="green", s=80, label="Start")
-            plt.scatter(data[-1,0], data[-1,1], color="red", s=80, label="Ende")
+        print(f"{file.name} ({len(data)} Frames)")
+        key = _wait_for_labeling_key(figure)
 
-            plt.xlim(-1.2,1.2)
-            plt.ylim(-1.2,1.2)
-            plt.gca().invert_yaxis()
-            plt.grid()
-            plt.legend()
+        if key == "enter":
+            print("✔ behalten\n")
+            plt.close(figure)
 
-            plt.show(block=False)
-            plt.pause(0.1)
+        elif key == "space":
+            file.unlink()
+            print("✖ gelöscht\n")
+            plt.close(figure)
 
-            print(f"{file.name} ({len(data)} Frames)")
-
-            while True:
-
-                event = events.get()
-
-                if not isinstance(event, keyboard.Events.Press):
-                    continue
-
-                if event.key == keyboard.Key.enter:
-
-                    print("✔ behalten\n")
-                    plt.close()
-                    break
-
-                elif event.key == keyboard.Key.space:
-
-                    file.unlink()
-                    print("✖ gelöscht\n")
-                    plt.close()
-                    break
-
-                elif event.key == keyboard.Key.esc:
-
-                    plt.close()
-                    return
+        elif key == "escape":
+            plt.close(figure)
+            return
 
 def dataset_building(output_path, base_path="dataset"):
 

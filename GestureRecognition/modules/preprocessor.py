@@ -4,7 +4,8 @@ import numpy as np
 import time
 import sys
 from pathlib import Path
-from pynput import keyboard
+from PyQt5.QtCore import QEvent, QObject, Qt
+from PyQt5.QtWidgets import QApplication
 
 try:
     from GestureRecognition.paths import resolve_label_dir
@@ -13,6 +14,23 @@ except ImportError:
     if str(PACKAGE_DIR) not in sys.path:
         sys.path.insert(0, str(PACKAGE_DIR))
     from paths import resolve_label_dir
+
+
+class _KeyboardFilter(QObject):
+    def __init__(self, preprocessor):
+        super().__init__()
+        self.preprocessor = preprocessor
+
+    def eventFilter(self, watched, event):
+        if event.type() != QEvent.KeyPress or event.isAutoRepeat():
+            return False
+        if event.key() == Qt.Key_R:
+            self.preprocessor.toggle_recording = True
+            return True
+        if event.key() == Qt.Key_Backspace:
+            self.preprocessor.trigger_delete = True
+            return True
+        return False
 
 
 class Preprocessor(Module):
@@ -26,19 +44,16 @@ class Preprocessor(Module):
             outputSchema={"type": "object", "properties": {outputSignal: {}}},
             name="preprocessor",
         )
-        self.listener = None
+        self.keyboard_filter = None
 
-    def _on_press(self, key):
-        """
-        Wird im exakten Moment des Drückens aufgerufen.
-        """
-        if hasattr(key, "char") and key.char == "r":
-            if not self.is_recording:
-                self.history.clear()
-            self.toggle_recording = True
-
-        elif key in (keyboard.Key.esc, keyboard.Key.backspace):
-            self.trigger_delete = True
+    def _install_keyboard_filter(self):
+        if self.keyboard_filter is not None:
+            return
+        application = QApplication.instance()
+        if application is not None:
+            self.keyboard_filter = _KeyboardFilter(self)
+            application.installEventFilter(self.keyboard_filter)
+            print("⌨️ [Pipeline] Steuerung aktiv: R = Start/Stopp, Backspace = letzte Aufnahme löschen")
 
     def start(self, data):
         self.outputSignal = "preprocessor"
@@ -57,11 +72,10 @@ class Preprocessor(Module):
 
         self.history = deque(maxlen=self.buffer_size)
         
-        self.listener = keyboard.Listener(on_press=self._on_press)
-        self.listener.start()
         return {}
 
     def step(self, data):
+        self._install_keyboard_filter()
         hand_landmarks = data.get("detector")
         result_trajectory = None
 
@@ -125,5 +139,7 @@ class Preprocessor(Module):
         return {self.outputSignal: result_trajectory}
 
     def stop(self, data):
-        if self.listener is not None:
-            self.listener.stop()
+        application = QApplication.instance()
+        if application is not None and self.keyboard_filter is not None:
+            application.removeEventFilter(self.keyboard_filter)
+        self.keyboard_filter = None
