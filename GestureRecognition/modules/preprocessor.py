@@ -1,9 +1,19 @@
 from SignalHub import Module
 from collections import deque
 import numpy as np
-import os
 import time
+import sys
+from pathlib import Path
 from pynput import keyboard
+
+try:
+    from GestureRecognition.paths import resolve_label_dir
+except ImportError:
+    PACKAGE_DIR = Path(__file__).resolve().parents[1]
+    if str(PACKAGE_DIR) not in sys.path:
+        sys.path.insert(0, str(PACKAGE_DIR))
+    from paths import resolve_label_dir
+
 
 class Preprocessor(Module):
     """
@@ -38,8 +48,7 @@ class Preprocessor(Module):
         self.trigger_delete = False
         self.last_saved_file = None  
         
-        self.temp_path = "dataset/P"
-        os.makedirs(self.temp_path, exist_ok=True)
+        self.temp_path = resolve_label_dir("P", create=True)
 
         config = data.get("config", {}).get("preprocessor", {})
         self.finger_idx = config.get("finger_idx", 8)
@@ -61,9 +70,9 @@ class Preprocessor(Module):
         # -------------------------------------------------------------------
         if self.trigger_delete:
             self.trigger_delete = False  
-            if self.last_saved_file and os.path.exists(self.last_saved_file):
-                os.remove(self.last_saved_file)
-                print(f"🗑️ [Pipeline] Letzte Aufnahme gelöscht: {os.path.basename(self.last_saved_file)}")
+            if self.last_saved_file and self.last_saved_file.exists():
+                self.last_saved_file.unlink()
+                print(f"🗑️ [Pipeline] Letzte Aufnahme gelöscht: {self.last_saved_file.name}")
                 self.last_saved_file = None
             else:
                 print("⚠️ [Pipeline] Keine vorherige Aufnahme zum Löschen gefunden.")
@@ -92,9 +101,9 @@ class Preprocessor(Module):
                     
                     result_trajectory = traj_normalized
                     
-                    label = os.path.basename(self.temp_path)
+                    label = self.temp_path.name
                     timestamp = int(time.time() * 1000)
-                    filename = os.path.join(self.temp_path, f"{label}_{timestamp}.npy")
+                    filename = self.temp_path / f"{label}_{timestamp}.npy"
                     
                     np.save(filename, traj_normalized)
                     self.last_saved_file = filename 

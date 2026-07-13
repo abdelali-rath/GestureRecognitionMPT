@@ -1,4 +1,3 @@
-import os
 import sys
 import numpy as np
 from pathlib import Path
@@ -13,6 +12,8 @@ if str(ROOT_DIR) not in sys.path:
 
 from SignalHub import GALY, bgr, Module
 from GestureRecognition.hmmclassifier import HMMClassifier
+from GestureRecognition.paths import resolve_project_path
+
 
 class HMMModule(Module):
     """Modul zur Live-Klassifikation von Gesten mittels Hidden Markov Models."""
@@ -24,11 +25,11 @@ class HMMModule(Module):
             name="hiddenmarkov",
         )
         self.outputSignal = outputSignal
-        self.model_path = model_path
+        self.model_path = resolve_project_path(model_path)
         self.model = None
 
     def start(self, data):
-        if os.path.exists(self.model_path):
+        if self.model_path.exists():
             self.model = HMMClassifier.load(self.model_path)
             print(f"🤖 [HMM] Modell erfolgreich geladen aus '{self.model_path}'")
         else:

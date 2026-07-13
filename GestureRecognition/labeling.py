@@ -1,20 +1,23 @@
-import os
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
-from pathlib import Path
 from pynput import keyboard
 
+try:
+    from .paths import iter_npy_files, resolve_dataset_dir, resolve_label_dir, resolve_project_path
+except ImportError:
+    from paths import iter_npy_files, resolve_dataset_dir, resolve_label_dir, resolve_project_path
 
-def data_labeling(label):
 
-    folder = Path("dataset") / label
+def data_labeling(label, base_path="dataset"):
+
+    folder = resolve_label_dir(label, base_path)
 
     if not folder.exists():
         print(f"Ordner {folder} existiert nicht.")
         return
 
-    files = sorted(folder.glob("*.npy"))
+    files = iter_npy_files(folder)
 
     if not files:
         print("Keine Aufnahmen gefunden.")
@@ -66,7 +69,7 @@ def data_labeling(label):
 
                 elif event.key == keyboard.Key.space:
 
-                    os.remove(file)
+                    file.unlink()
                     print("✖ gelöscht\n")
                     plt.close()
                     break
@@ -76,19 +79,24 @@ def data_labeling(label):
                     plt.close()
                     return
 
-def dataset_building(output_path):
+def dataset_building(output_path, base_path="dataset"):
 
-    base = Path("dataset")
+    base = resolve_dataset_dir(base_path)
+    output_path = resolve_project_path(output_path)
 
     X = []
     lengths = []
     labels = []
 
-    classes = [d.name for d in base.iterdir() if d.is_dir()]
+    if not base.exists():
+        print(f"Datensatzordner existiert nicht: {base}")
+        return
+
+    classes = sorted(d.name for d in base.iterdir() if d.is_dir())
 
     for label in classes:
 
-        for file in (base / label).glob("*.npy"):
+        for file in iter_npy_files(base / label):
 
             traj = np.load(file)
 
@@ -99,6 +107,10 @@ def dataset_building(output_path):
             lengths.append(len(traj))
             labels.append(label)
 
+    if not X:
+        print(f"Keine verwertbaren .npy-Dateien im Datensatz gefunden: {base}")
+        return
+
     dataset = {
         "X": np.concatenate(X),
         "lengths": lengths,
@@ -106,6 +118,7 @@ def dataset_building(output_path):
         "classes": classes
     }
 
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "wb") as f:
         pickle.dump(dataset, f)
 
