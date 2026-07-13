@@ -22,16 +22,13 @@ class Preprocessor(Module):
         """
         Wird im exakten Moment des Drückens aufgerufen.
         """
-        try:
-            if hasattr(key, 'char') and key.char == 'r':
-                if not self.is_recording:
-                    self.history.clear()
-                self.toggle_recording = True
-                
-            elif key == keyboard.Key.esc or key == keyboard.Key.backspace:
-                self.trigger_delete = True
-        except Exception:
-            pass
+        if hasattr(key, "char") and key.char == "r":
+            if not self.is_recording:
+                self.history.clear()
+            self.toggle_recording = True
+
+        elif key in (keyboard.Key.esc, keyboard.Key.backspace):
+            self.trigger_delete = True
 
     def start(self, data):
         self.outputSignal = "preprocessor"
