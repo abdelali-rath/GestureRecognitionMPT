@@ -22,16 +22,13 @@ class Preprocessor(Module):
         """
         Wird im exakten Moment des Drückens aufgerufen.
         """
-        try:
-            if hasattr(key, 'char') and key.char == 'r':
-                if not self.is_recording:
-                    self.history.clear()
-                self.toggle_recording = True
-                
-            elif key == keyboard.Key.esc or key == keyboard.Key.backspace:
-                self.trigger_delete = True
-        except Exception:
-            pass
+        if hasattr(key, "char") and key.char == "r":
+            if not self.is_recording:
+                self.history.clear()
+            self.toggle_recording = True
+
+        elif key in (keyboard.Key.esc, keyboard.Key.backspace):
+            self.trigger_delete = True
 
     def start(self, data):
         self.outputSignal = "preprocessor"
@@ -49,7 +46,6 @@ class Preprocessor(Module):
         self.buffer_size = config.get("buffer_size", 140)
         self.min_steps = config.get("min_steps", 15)
 
-        # Historie initialisieren
         self.history = deque(maxlen=self.buffer_size)
         
         self.listener = keyboard.Listener(on_press=self._on_press)
