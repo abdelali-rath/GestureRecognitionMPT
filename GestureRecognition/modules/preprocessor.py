@@ -49,7 +49,6 @@ class Preprocessor(Module):
         self.buffer_size = config.get("buffer_size", 140)
         self.min_steps = config.get("min_steps", 15)
 
-        # Historie initialisieren
         self.history = deque(maxlen=self.buffer_size)
         
         self.listener = keyboard.Listener(on_press=self._on_press)
