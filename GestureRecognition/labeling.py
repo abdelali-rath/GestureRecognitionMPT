@@ -1,148 +1,112 @@
-def data_labeling(times: int, label: str):
-    """
-    TODO: data_labeling: Datenerfassung für Gesten (SignalHub)
-
-    Ziel:
-    -----
-    Implementiere eine Funktion, mit der Trainingsdaten für eine bestimmte
-    Geste aufgenommen und gespeichert werden können.
-
-    Anforderungen / Ideen:
-    ----------------------
-
-    1. Aufnahme starten
-
-       - Starte SignalHub über einen Subprocess
-       - Übergib einen Dateipfad für die Aufnahme
-       - Überlege, welche Module aufgenommen werden sollen
-       - Nimm entsprechende Änderungen in der ``config.yaml`` vor
-
-    2. Interaktive Steuerung (optional)
-
-       - Implementiere eine einfache Benutzerinteraktion:
-         - Aufnahme speichern
-         - Aufnahme verwerfen
-         - Programm beenden
-
-    .. tip::
-
-       Die Funktion ``getch()`` (Aus dem Modul Linux :mod:`getch` oder bei Windows :mod:`msvcrt`) ist sehr hilfreich, um einzelne Tastendrücke
-       direkt auszulesen (ohne Enter). Damit kannst du dir ein schnelles
-       Labeling-Interface bauen.
-
-       Beispiel:
-
-       .. code-block:: text
-
-           ESC → speichern
-           andere Taste → verwerfen
-
-    3. Daten sichten und bereinigen
-
-       - Lade die aufgenommenen Daten
-       - Überlege:
-         - Welche Teile sind relevant?
-         - Welche Frames sind leer oder unbrauchbar?
-         - Sollten gewisse Sequenzen evtl. gar nicht benutzt werden?
-       - Entferne unnötige Anteile (z. B. keine erkannte Hand am Anfang/Ende)
-
-    4. Speicherung
-
-       - Speichere Daten strukturiert nach Labels (z. B. Ordnerstruktur)
-       - Jede Aufnahme sollte einzeln gespeichert werden
-
-    .. note::
-
-       Die konkrete Umsetzung (Dateiformat, Struktur, Ablauf) ist bewusst offen.
-       Entwickle ein System, das für dich sinnvoll ist und sich gut weiterverarbeiten lässt.
-
-    .. warning::
-
-       Ziel ist nicht nur, dass es „funktioniert“, sondern ein sauberer und
-       effizienter Workflow für Datensammlung.
-
-    Parameters
-    ----------
-    times : int
-        Wie viele Aufnahmen gemacht werden sollen.
-        Kann frei angepasst werden (z. B. Endlosschleife oder interaktive Steuerung).
-
-    label : str
-        Name der Geste / Klasse.
-        Kann ebenfalls frei gestaltet werden (z. B. dynamische Labels, mehrere Klassen gleichzeitig).
-    """
-    pass
+import os
+import pickle
+import numpy as np
+import matplotlib.pyplot as plt
+from pathlib import Path
+from pynput import keyboard
 
 
+def data_labeling(label):
 
+    folder = Path("dataset") / label
+
+    if not folder.exists():
+        print(f"Ordner {folder} existiert nicht.")
+        return
+
+    files = sorted(folder.glob("*.npy"))
+
+    if not files:
+        print("Keine Aufnahmen gefunden.")
+        return
+
+    print(f"\n=== Labeling {label} ===")
+    print("[ENTER] behalten")
+    print("[SPACE] löschen")
+    print("[ESC] abbrechen\n")
+
+
+    with keyboard.Events() as events:
+
+        for file in files:
+
+
+            data = np.load(file)
+
+            plt.figure("Vorschau", figsize=(5,5))
+            plt.clf()
+
+            plt.plot(data[:,0], data[:,1], "-o", markersize=3)
+            plt.scatter(data[0,0], data[0,1], color="green", s=80, label="Start")
+            plt.scatter(data[-1,0], data[-1,1], color="red", s=80, label="Ende")
+
+            plt.xlim(-1.2,1.2)
+            plt.ylim(-1.2,1.2)
+            plt.gca().invert_yaxis()
+            plt.grid()
+            plt.legend()
+
+            plt.show(block=False)
+            plt.pause(0.1)
+
+            print(f"{file.name} ({len(data)} Frames)")
+
+            while True:
+
+                event = events.get()
+
+                if not isinstance(event, keyboard.Events.Press):
+                    continue
+
+                if event.key == keyboard.Key.enter:
+
+                    print("✔ behalten\n")
+                    plt.close()
+                    break
+
+                elif event.key == keyboard.Key.space:
+
+                    os.remove(file)
+                    print("✖ gelöscht\n")
+                    plt.close()
+                    break
+
+                elif event.key == keyboard.Key.esc:
+
+                    plt.close()
+                    return
 
 def dataset_building(output_path):
-    """
-    TODO: dataset_building: Trainingsdatensatz aus aufgenommenen Gesten erstellen
 
-    Ziel:
-    -----
-    Implementiere eine Funktion, die alle aufgenommenen Daten lädt,
-    verarbeitet und in eine Form bringt, die von eurem
-    Hidden-Markov-Modell (HMM) Classifier verwendet werden kann.
+    base = Path("dataset")
 
-    Anforderungen / Ideen:
-    ----------------------
+    X = []
+    lengths = []
+    labels = []
 
-    1. Daten laden
+    classes = [d.name for d in base.iterdir() if d.is_dir()]
 
-       - Durchsuche deinen Trainingsdaten-Ordner
-       - Organisiere Daten nach Labels
+    for label in classes:
 
-    2. Feature-Extraktion / Preprocessing
+        for file in (base / label).glob("*.npy"):
 
-       - Überlege:
-         - Welche Features braucht dein Modell?
-         - Wie transformierst du die Rohdaten sinnvoll?
-       - Wende eine konsistente Verarbeitung auf alle Sequenzen an
+            traj = np.load(file)
 
-    3. Umgang mit Sequenzen
+            if len(traj) < 10:
+                continue
 
-       - Daten sind zeitliche Sequenzen
-       - Achte auf:
-         - Unterschiedliche Längen
-         - Konsistente Struktur
+            X.append(traj)
+            lengths.append(len(traj))
+            labels.append(label)
 
-    4. Validierung
+    dataset = {
+        "X": np.concatenate(X),
+        "lengths": lengths,
+        "labels": labels,
+        "classes": classes
+    }
 
-       - Entferne unbrauchbare Daten
-         (z. B. zu kurze oder fehlerhafte Sequenzen)
+    with open(output_path, "wb") as f:
+        pickle.dump(dataset, f)
 
-    5. Ausgabeformat
-
-       - Baue den Datensatz so, dass dein HMM direkt damit arbeiten kann
-       - Das Format sollst du selbst definieren
-
-    .. note::
-
-       Es gibt hier keine vorgegebene „richtige“ Lösung.
-       Wichtig ist, dass dein Datensatz konsistent und nutzbar ist.
-
-    .. tip::
-
-       Denke wie ein System-Designer:
-       Wie müssen Daten aussehen, damit Training und Inferenz sauber funktionieren?
-
-    .. warning::
-
-       Inkonsistente Datenstrukturen sind eine der häufigsten Fehlerquellen
-       beim Training von Sequenzmodellen.
-
-    Erweiterung (optional):
-    -----------------------
-
-    - Normalisierung der Daten
-    - Datenaugmentation
-    - Debug-Ausgaben oder Visualisierung
-
-    Parameters
-    ----------
-    output_path : Path or str
-        Zielpfad für den erzeugten Trainingsdatensatz.
-    """
-    pass
+    print(f"\nDatensatz gespeichert: {output_path}")
