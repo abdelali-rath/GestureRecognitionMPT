@@ -1,3 +1,4 @@
+import pickle
 import sys
 import numpy as np
 from pathlib import Path
@@ -25,15 +26,28 @@ class HMMModule(Module):
             name="hiddenmarkov",
         )
         self.outputSignal = outputSignal
+        self.default_model_path = model_path
         self.model_path = resolve_project_path(model_path)
+        self.min_margin = 0.5
         self.model = None
 
     def start(self, data):
-        if self.model_path.exists():
-            self.model = HMMClassifier.load(self.model_path)
-            print(f"🤖 [HMM] Modell erfolgreich geladen aus '{self.model_path}'")
-        else:
+        config = data.get("config", {}).get("hiddenmarkov", {})
+        self.model_path = resolve_project_path(config.get("model_path", self.default_model_path))
+        self.min_margin = float(config.get("min_margin", 0.5))
+
+        if not self.model_path.exists():
             print(f"❌ [HMM] Modelldatei nicht gefunden: '{self.model_path}'")
+            return {}
+
+        try:
+            self.model = HMMClassifier.load(self.model_path)
+        except (OSError, ValueError, pickle.UnpicklingError) as error:
+            self.model = None
+            print(f"❌ [HMM] Modell konnte nicht geladen werden: {error}")
+            return {}
+
+        print(f"🤖 [HMM] Modell erfolgreich geladen aus '{self.model_path}'")
         return {}
 
     def step(self, data):
@@ -41,18 +55,37 @@ class HMMModule(Module):
         if trajectory is None or self.model is None:
             return {}
 
-        scores = self.model.decision_function([trajectory])[0]
-        best_idx = np.argmax(scores)
+        trajectory = np.asarray(trajectory, dtype=float)
+        scores = self.model.decision_function([trajectory])[0] / max(len(trajectory), 1)
+        best_idx = int(np.argmax(scores))
         label = self.model.classes_[best_idx]
-        score = scores[best_idx]
+        score = float(scores[best_idx])
+        if len(scores) > 1:
+            second_score = float(np.partition(scores, -2)[-2])
+            margin = score - second_score
+        else:
+            margin = np.inf
+        confident = np.isfinite(score) and margin >= self.min_margin
 
         galy = GALY()
-        layer = galy.add_layer()
-        display_text = f"Geste: {label} ({score:.1f})"
-        text_color = bgr.GREEN if score > -1000 else bgr.RED
-        layer.putText(display_text, x=40, y=60, color=text_color, scale=1.2, thickness=2)
+        galy.layer("hmm")
+        display_text = f"Geste: {label} (Score {score:.2f}, Abstand {margin:.2f})"
+        text_color = bgr("#00FF00") if confident else bgr("#FF0000")
+        galy.putText(
+            text=display_text,
+            org=(40, 90),
+            color=text_color,
+            fontScale=0.8,
+            thickness=2,
+        )
 
-        return {self.outputSignal: label, "galy": galy}
+        result = {
+            "label": label,
+            "score": score,
+            "margin": margin,
+            "confident": confident,
+        }
+        return {self.outputSignal: result, "galy": galy}
 
     def stop(self, data):
         pass

@@ -20,15 +20,33 @@ Bevor Sie mit der Implementierung beginnen, müssen Sie das Projekt lokal einric
 
 .. code-block:: bash
 
-    pip install -r requirements.txt
+    uv sync
+
+Starten Sie die Programme anschließend über die Projektumgebung:
+
+.. code-block:: bash
+
+    uv run python main.py
+    uv run python GestureRecognition/start_labeling.py
+
+.. note::
+
+    ``uv sync`` erstellt die lokale ``.venv`` aus ``pyproject.toml`` und
+    ``uv.lock``. Die Umgebung wird nicht mit Git übertragen. Nach einem
+    Gerätewechsel oder einem erneuten Klonen führen Sie deshalb einfach wieder
+    ``uv sync`` aus.
 
 .. tip::
 
-    Falls Sie ``uv`` verwenden, können Sie die Umgebung auch automatisch verwalten
+    Ohne ``uv`` können Sie eine eigene virtuelle Umgebung verwenden:
 
     .. code-block:: bash
 
-        uv sync
+        python -m venv .venv
+        source .venv/bin/activate
+        pip install -r requirements.txt
+
+    Unter Windows wird die Umgebung mit ``.venv\Scripts\activate`` aktiviert.
 
 3. Download der Recording-Dateien
 
@@ -47,7 +65,7 @@ Entpacken Sie die ``.7z``- oder ``.zip``-Datei in Ihren geklonten Projektordner.
 
 .. code-block:: bash
 
-    python main.py --mode replay --recorder <path_to_recording>.pkl
+    uv run python main.py --mode replay --recorder.file <path_to_recording>.pkl
 
 Ersetzen Sie ``<path_to_recording>`` durch eine der bereitgestellten
 Recording-Dateien.

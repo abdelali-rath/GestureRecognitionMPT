@@ -6,6 +6,52 @@ Dafür werden Hand-Landmarks extrahiert und anschließend mit einem [Hidden-Mark
 
 Die Online-Dokumentation zur Bearbeitung des Projekts finden sie [hier](https://jaboll-ai.github.io/GestureRecognitionMPT).
 
+## Installation
+
+Empfohlen wird [uv](https://docs.astral.sh/uv/), damit auf Linux, macOS und
+Windows dieselbe Projektkonfiguration verwendet wird. Nach dem Klonen oder auf
+einem neuen Gerät genügen:
+
+```bash
+git clone git@github.com:abdelali-rath/GestureRecognitionMPT.git
+cd GestureRecognitionMPT
+uv sync
+```
+
+Programme anschließend immer über die Projektumgebung starten:
+
+```bash
+uv run python main.py
+uv run python GestureRecognition/start_labeling.py
+```
+
+`uv sync` erstellt die lokale `.venv` und installiert alle Abhängigkeiten aus
+`pyproject.toml` und `uv.lock`. Die `.venv` wird absichtlich nicht mit Git
+übertragen und muss auf jedem Gerät neu erzeugt werden.
+
+Alternativ kann eine eigene virtuelle Umgebung mit
+`pip install -r requirements.txt` eingerichtet werden.
+
+## HMM trainieren
+
+Über `GestureRecognition/start_labeling.py` können die Aufnahmen geprüft, der
+Datensatz erstellt und das HMM trainiert werden:
+
+```bash
+uv run python GestureRecognition/start_labeling.py
+```
+
+Menüpunkt 2 erzeugt `dataset/gesamt_dataset.pkl`. Menüpunkt 3 reserviert 20 %
+jeder Klasse für die Evaluation, zeigt Genauigkeit und Confusion-Matrix an und
+trainiert anschließend das finale Modell mit allen Sequenzen. Es wird als
+`dataset/hmm.pkl` gespeichert.
+
+Anschließend startet die Live-Erkennung mit:
+
+```bash
+uv run python main.py
+```
+
 ## Pipeline
 
 Die Verarbeitung erfolgt über mehrere Module:
