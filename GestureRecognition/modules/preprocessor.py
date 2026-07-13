@@ -38,7 +38,7 @@ class Preprocessor(Module):
         self.trigger_delete = False
         self.last_saved_file = None  
         
-        self.temp_path = "dataset/D"
+        self.temp_path = "dataset/P"
         os.makedirs(self.temp_path, exist_ok=True)
 
         config = data.get("config", {}).get("preprocessor", {})
@@ -118,4 +118,3 @@ class Preprocessor(Module):
     def stop(self, data):
         if self.listener:
             self.listener.stop()
-            self.listener.join()
