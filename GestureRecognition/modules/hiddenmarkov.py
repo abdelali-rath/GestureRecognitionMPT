@@ -5,9 +5,8 @@ import numpy as np
 from pathlib import Path
 
 # ==============================================================================
-# PFAD-RETTER: Erkennt den Hauptordner automatisch für fehlerfreie Imports
 SCRIPT_DIR = Path(__file__).resolve().parent
-ROOT_DIR = SCRIPT_DIR.parent.parent  # Geht hoch bis zu GestureRecognitionMPT
+ROOT_DIR = SCRIPT_DIR.parent.parent  
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 # ==============================================================================
