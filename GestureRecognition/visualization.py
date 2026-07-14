@@ -3,7 +3,7 @@ import glob
 import numpy as np
 import matplotlib.pyplot as plt
 
-def visualize_dataset(dataset_dir="dataset", label="P", start=0, stop=5):
+def visualize_dataset(label, start, stop, dataset_dir="dataset"):
     """
     Visualisiert gezielt einen Buchstaben und einen bestimmten Bereich von Aufnahmen.
     """
@@ -35,7 +35,7 @@ def visualize_dataset(dataset_dir="dataset", label="P", start=0, stop=5):
     plt.show()
 
 
-def replay_recordings(dataset_dir="dataset", label="P", count=3):
+def replay_recordings(dataset_dir="dataset", label="P", count=0):
     """
     Exploration und Replay der aufgenommenen Rohdaten.
     Passt das Sichtfenster automatisch an die echten Daten an.
@@ -73,9 +73,10 @@ def replay_recordings(dataset_dir="dataset", label="P", count=3):
             
         plt.show()
 
-    if __name__ == "__main__":
-        print("Starte Datenexploration...")
+if __name__ == "__main__":
+    print("Starte Datenexploration...")
 
-        visualize_dataset(label="P", start=0, stop=4)
+    label = input("Welchen Buchstaben möchtest du anzeigen? ").upper()
 
-        replay_recordings(label="P", count=2)
+    visualize_dataset(label=label, start=0, stop=4)
+    replay_recordings(label=label, count=2)
