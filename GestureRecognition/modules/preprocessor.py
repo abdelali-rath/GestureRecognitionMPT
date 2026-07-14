@@ -1,4 +1,4 @@
-from SignalHub import Module
+from SignalHub import GALY, bgr, Module
 from collections import deque
 import numpy as np
 import time
@@ -62,13 +62,18 @@ class Preprocessor(Module):
         self.toggle_recording = False
         self.trigger_delete = False
         self.last_saved_file = None  
-        
-        self.temp_path = resolve_label_dir("P", create=True)
 
         config = data.get("config", {}).get("preprocessor", {})
         self.finger_idx = config.get("finger_idx", 8)
         self.buffer_size = config.get("buffer_size", 140)
         self.min_steps = config.get("min_steps", 15)
+        self.save_recordings = bool(config.get("save_recordings", False))
+        self.recording_label = str(config.get("recording_label", "P")).strip().upper()
+        self.temp_path = (
+            resolve_label_dir(self.recording_label, create=True)
+            if self.save_recordings
+            else None
+        )
 
         self.history = deque(maxlen=self.buffer_size)
         
@@ -115,14 +120,14 @@ class Preprocessor(Module):
                     
                     result_trajectory = traj_normalized
                     
-                    label = self.temp_path.name
-                    timestamp = int(time.time() * 1000)
-                    filename = self.temp_path / f"{label}_{timestamp}.npy"
-                    
-                    np.save(filename, traj_normalized)
-                    self.last_saved_file = filename 
-                    
-                    print(f"✅ [Pipeline] Gesichert: {filename} ({len(traj)} Frames)")
+                    if self.save_recordings:
+                        timestamp = int(time.time() * 1000)
+                        filename = self.temp_path / f"{self.recording_label}_{timestamp}.npy"
+                        np.save(filename, traj_normalized)
+                        self.last_saved_file = filename
+                        print(f"✅ [Pipeline] Gesichert: {filename} ({len(traj)} Frames)")
+                    else:
+                        print(f"✅ [Pipeline] Geste abgeschlossen ({len(traj)} Frames)")
                 else:
                     print("⚠️ [Pipeline] Geste zu kurz, ignoriert.")
                 
@@ -136,7 +141,19 @@ class Preprocessor(Module):
             y = hand_landmarks.landmark[self.finger_idx].y
             self.history.append([x, y])
 
-        return {self.outputSignal: result_trajectory}
+        output = {self.outputSignal: result_trajectory}
+        if self.is_recording:
+            galy = GALY()
+            galy.layer("recording", alwaysVisible=True)
+            galy.putText(
+                text="AUFNAHME",
+                org=(40, 125),
+                color=bgr("#FF0000"),
+                fontScale=0.9,
+                thickness=2,
+            )
+            output["galy"] = galy
+        return output
 
     def stop(self, data):
         application = QApplication.instance()

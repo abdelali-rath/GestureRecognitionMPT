@@ -21,6 +21,9 @@ preprocessor:
   buffer_size: 140
   max_lost: 10
   min_steps: 15
+  save_recordings: false
+  recording_label: P
 hiddenmarkov:
   model_path: dataset/hmm.pkl
   min_margin: 0.5
+  display_seconds: 4.0

@@ -17,6 +17,7 @@ Das vorhandene Labeling-Menü enthält den vollständigen Workflow:
 1. Aufnahmen prüfen
 2. ``dataset/gesamt_dataset.pkl`` erstellen
 3. HMM trainieren und evaluieren
+4. Separate Holdout-Evaluation als Confusion Matrix anzeigen
 
 Beim Training werden 20 Prozent jeder Klasse als Testdaten zurückgehalten. Die
 Ausgabe enthält Genauigkeit und Confusion-Matrix. Anschließend wird das finale
@@ -36,12 +37,20 @@ zwischen bestem und zweitbestem Score stehen in ``config.yml``:
    hiddenmarkov:
      model_path: dataset/hmm.pkl
      min_margin: 0.5
+     display_seconds: 4.0
 
 Danach startet die Live-Erkennung mit:
 
 .. code-block:: bash
 
    uv run python main.py
+
+Das SignalHub-Fenster muss den Tastaturfokus besitzen. ``R`` startet die
+Aufzeichnung einer Geste, ein zweites ``R`` beendet sie und übergibt die
+normalisierte Trajektorie an das ``HMMModule``. Das erkannte Label bleibt einige
+Sekunden im Kamerabild sichtbar. Live-Testgesten werden nicht in den
+Trainingsdatensatz geschrieben, solange ``preprocessor.save_recordings`` auf
+``false`` steht.
 
 API-Referenz
 ------------

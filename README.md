@@ -44,7 +44,9 @@ uv run python GestureRecognition/start_labeling.py
 Menüpunkt 2 erzeugt `dataset/gesamt_dataset.pkl`. Menüpunkt 3 reserviert 20 %
 jeder Klasse für die Evaluation, zeigt Genauigkeit und Confusion-Matrix an und
 trainiert anschließend das finale Modell mit allen Sequenzen. Es wird als
-`dataset/hmm.pkl` gespeichert.
+`dataset/hmm.pkl` gespeichert. Menüpunkt 4 trainiert ein separates
+Evaluationsmodell auf 80 % der Daten und zeigt die Accuracy sowie eine
+Confusion Matrix für die übrigen 20 % an, ohne das finale Modell zu verändern.
 
 Anschließend startet die Live-Erkennung mit:
 
@@ -54,7 +56,9 @@ uv run python main.py
 
 Klicken Sie einmal in das Kamerafenster, damit es den Tastaturfokus besitzt.
 Mit `R` oder `Shift+R` wird die Aufnahme gestartet und mit erneutem Drücken
-beendet und klassifiziert. `Backspace` löscht die zuletzt gespeicherte Aufnahme.
+beendet und klassifiziert. Das Ergebnis wird vier Sekunden im Kamerabild und
+zusätzlich im Terminal angezeigt. Live-Testgesten werden standardmäßig nicht
+als Trainingsdaten gespeichert.
 
 ## Pipeline
 

@@ -1,5 +1,6 @@
 import pickle
 import sys
+import time
 import numpy as np
 from pathlib import Path
 
@@ -29,12 +30,18 @@ class HMMModule(Module):
         self.default_model_path = model_path
         self.model_path = resolve_project_path(model_path)
         self.min_margin = 0.5
+        self.display_seconds = 4.0
         self.model = None
+        self.last_result = None
+        self.display_until = 0.0
 
     def start(self, data):
         config = data.get("config", {}).get("hiddenmarkov", {})
         self.model_path = resolve_project_path(config.get("model_path", self.default_model_path))
         self.min_margin = float(config.get("min_margin", 0.5))
+        self.display_seconds = float(config.get("display_seconds", 4.0))
+        self.last_result = None
+        self.display_until = 0.0
 
         if not self.model_path.exists():
             print(f"❌ [HMM] Modelldatei nicht gefunden: '{self.model_path}'")
@@ -52,25 +59,45 @@ class HMMModule(Module):
 
     def step(self, data):
         trajectory = data.get("preprocessor")
-        if trajectory is None or self.model is None:
+        if self.model is None:
             return {}
 
-        trajectory = np.asarray(trajectory, dtype=float)
-        scores = self.model.decision_function([trajectory])[0] / max(len(trajectory), 1)
-        best_idx = int(np.argmax(scores))
-        label = self.model.classes_[best_idx]
-        score = float(scores[best_idx])
-        if len(scores) > 1:
-            second_score = float(np.partition(scores, -2)[-2])
-            margin = score - second_score
-        else:
-            margin = np.inf
-        confident = np.isfinite(score) and margin >= self.min_margin
+        if trajectory is not None:
+            trajectory = np.asarray(trajectory, dtype=float)
+            scores = self.model.decision_function([trajectory])[0] / max(len(trajectory), 1)
+            best_idx = int(np.argmax(scores))
+            label = self.model.classes_[best_idx]
+            score = float(scores[best_idx])
+            if len(scores) > 1:
+                second_score = float(np.partition(scores, -2)[-2])
+                margin = score - second_score
+            else:
+                margin = np.inf
+            confident = np.isfinite(score) and margin >= self.min_margin
+            self.last_result = {
+                "label": label,
+                "score": score,
+                "margin": margin,
+                "confident": confident,
+            }
+            self.display_until = time.monotonic() + self.display_seconds
+            confidence_text = "sicher" if confident else "unsicher"
+            print(
+                f"🔤 [HMM] Erkannt: {label} | Score: {score:.2f} | "
+                f"Abstand: {margin:.2f} ({confidence_text})"
+            )
+
+        if self.last_result is None or time.monotonic() > self.display_until:
+            return {self.outputSignal: None}
 
         galy = GALY()
-        galy.layer("hmm")
-        display_text = f"Geste: {label} (Score {score:.2f}, Abstand {margin:.2f})"
-        text_color = bgr("#00FF00") if confident else bgr("#FF0000")
+        galy.layer("hmm", alwaysVisible=True)
+        result = self.last_result
+        display_text = (
+            f"Geste: {result['label']} "
+            f"(Score {result['score']:.2f}, Abstand {result['margin']:.2f})"
+        )
+        text_color = bgr("#00FF00") if result["confident"] else bgr("#FF0000")
         galy.putText(
             text=display_text,
             org=(40, 90),
@@ -79,12 +106,6 @@ class HMMModule(Module):
             thickness=2,
         )
 
-        result = {
-            "label": label,
-            "score": score,
-            "margin": margin,
-            "confident": confident,
-        }
         return {self.outputSignal: result, "galy": galy}
 
     def stop(self, data):

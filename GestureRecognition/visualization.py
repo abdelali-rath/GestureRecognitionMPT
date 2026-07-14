@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from collections import Counter
 
 try:
     from .paths import iter_npy_files, resolve_label_dir
@@ -35,6 +36,98 @@ def visualize_dataset(dataset_dir="dataset", label="P", start=0, stop=5):
     plt.legend()
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.show()
+
+
+def evaluate_classifier(
+    dataset_path="dataset/gesamt_dataset.pkl",
+    n_components=4,
+    n_iter=100,
+    test_size=0.2,
+    random_state=42,
+    show=True,
+):
+    """Evaluiert ein HMM auf getrennten Testdaten und zeigt die Confusion Matrix."""
+    try:
+        from .hmmclassifier import HMMClassifier, load_dataset, stratified_split
+    except ImportError:
+        from hmmclassifier import HMMClassifier, load_dataset, stratified_split
+
+    sequences, labels = load_dataset(dataset_path)
+    counts = Counter(labels)
+    valid_labels = {label for label, count in counts.items() if count >= 2}
+    filtered = [
+        (sequence, label)
+        for sequence, label in zip(sequences, labels)
+        if label in valid_labels
+    ]
+    if not filtered:
+        raise ValueError("Keine Klassen mit mindestens zwei Sequenzen gefunden.")
+
+    sequences, labels = map(list, zip(*filtered))
+    train_sequences, train_labels, test_sequences, test_labels = stratified_split(
+        sequences,
+        labels,
+        test_size=test_size,
+        random_state=random_state,
+    )
+
+    classifier = HMMClassifier(
+        n_components=n_components,
+        n_iter=n_iter,
+        random_state=random_state,
+    )
+    classifier.fit(train_sequences, train_labels)
+    predictions = classifier.predict(test_sequences)
+    classes = classifier.classes_
+    class_indices = {label: index for index, label in enumerate(classes)}
+
+    matrix = np.zeros((len(classes), len(classes)), dtype=int)
+    for expected, predicted in zip(test_labels, predictions):
+        matrix[class_indices[expected], class_indices[predicted]] += 1
+    accuracy = float(np.mean(np.asarray(predictions) == np.asarray(test_labels)))
+
+    figure_size = max(8, min(15, len(classes) * 0.55))
+    figure, axis = plt.subplots(figsize=(figure_size, figure_size))
+    image = axis.imshow(matrix, interpolation="nearest", cmap="Blues")
+    figure.colorbar(image, ax=axis, fraction=0.046, pad=0.04)
+    axis.set(
+        title=f"HMM-Evaluation - Accuracy: {accuracy:.1%}",
+        xlabel="Vorhergesagtes Label",
+        ylabel="Tatsächliches Label",
+        xticks=np.arange(len(classes)),
+        yticks=np.arange(len(classes)),
+        xticklabels=classes,
+        yticklabels=classes,
+    )
+
+    threshold = matrix.max() / 2 if matrix.size else 0
+    for row in range(len(classes)):
+        for column in range(len(classes)):
+            value = matrix[row, column]
+            if value:
+                axis.text(
+                    column,
+                    row,
+                    str(value),
+                    ha="center",
+                    va="center",
+                    color="white" if value > threshold else "black",
+                    fontsize=8,
+                )
+
+    figure.tight_layout()
+    print(f"Testgenauigkeit: {accuracy:.1%} ({len(test_labels)} Sequenzen)")
+    if show:
+        plt.show()
+
+    return {
+        "accuracy": accuracy,
+        "confusion_matrix": matrix,
+        "classes": classes,
+        "predictions": predictions,
+        "expected": test_labels,
+        "figure": figure,
+    }
 
 
 def replay_recordings(dataset_dir="dataset", label="P", count=3):
